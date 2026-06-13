@@ -320,7 +320,10 @@ tr:hover td{background:#fafafa}
   </div>
   <div class="card">
     <div class="card-title">📅 Registrar asistencia del día</div>
-    <div style="margin-bottom:10px"><label>Fecha</label><input type="date" id="att-fecha" style="max-width:200px"></div>
+    <div class="row">
+      <div><label>Fecha</label><input type="date" id="att-fecha"></div>
+      <div><label>Proyecto (cotización)</label><select id="att-quote"><option value="">Sin asignar</option></select></div>
+    </div>
     <div id="asistencia-form"></div>
     <button class="btn btn-success btn-block" onclick="saveAsistencia()" style="margin-top:10px">✓ Guardar asistencia</button>
   </div>
@@ -692,25 +695,31 @@ function renderGastos(){
   else{
     el.innerHTML=accepted.map(q=>{
       const cobrado=db.pagos.filter(p=>p.quoteId===q.id).reduce((s,p)=>s+p.monto,0);
-      const gastado=db.gastos.filter(g=>g.quoteId===q.id).reduce((s,g)=>s+g.monto,0);
-      const gastadoAyud=db.asistencias.reduce((s,att)=>s+att.registros.filter(r=>r.asistio).reduce((ss,r)=>ss+r.jornal,0),0);
-      const utilidad=cobrado-gastado;
-      const pctGast=q.total>0?Math.min(100,Math.round(gastado/q.total*100)):0;
+      const gastadoMat=db.gastos.filter(g=>g.quoteId===q.id).reduce((s,g)=>s+g.monto,0);
+      const gastadoAyud=db.asistencias.filter(a=>a.quoteId===q.id).reduce((s,att)=>s+att.registros.filter(r=>r.asistio).reduce((ss,r)=>ss+r.jornal,0),0);
+      const gastadoTotal=gastadoMat+gastadoAyud;
+      const utilidad=cobrado-gastadoTotal;
+      const pctGast=q.total>0?Math.min(100,Math.round(gastadoTotal/q.total*100)):0;
       const pctCobr=q.total>0?Math.min(100,Math.round(cobrado/q.total*100)):0;
       const rentColor=utilidad>=0?'green':'red';
-      return`<div style="padding:10px 0;border-bottom:1px solid #f0f0ec">
+      // Ayudantes que trabajaron en este proyecto
+      const ayudantesProyecto=[...new Set(db.asistencias.filter(a=>a.quoteId===q.id).flatMap(a=>a.registros.filter(r=>r.asistio).map(r=>r.nombre)))];
+      return`<div style="padding:12px 0;border-bottom:1px solid #f0f0ec">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px">
           <strong style="font-size:13px">${q.cliente} — ${q.desc}</strong>
           <span class="${rentColor}" style="font-size:13px;font-weight:700">${utilidad>=0?'✓':'⚠'} ${fmt(utilidad)}</span>
         </div>
-        <div style="font-size:12px;color:#888;margin-bottom:6px">Cotizado: ${fmt(q.total)} | Cobrado: ${fmt(cobrado)} | Gastos del servicio: ${fmt(gastado)}</div>
+        <div style="font-size:12px;color:#888;margin-bottom:4px">
+          Cotizado: ${fmt(q.total)} &nbsp;|&nbsp; Cobrado: <span class="green">${fmt(cobrado)}</span> &nbsp;|&nbsp; Materiales: <span class="red">${fmt(gastadoMat)}</span> &nbsp;|&nbsp; Mano de obra: <span class="red">${fmt(gastadoAyud)}</span>
+        </div>
+        ${ayudantesProyecto.length?`<div style="font-size:11px;color:#666;margin-bottom:6px">👷 Ayudantes: ${ayudantesProyecto.join(', ')}</div>`:''}
         <div class="rentabilidad-bar">
           <div class="rent-cobrado" style="width:${pctCobr}%" title="Cobrado"></div>
-          <div class="rent-gastado" style="width:${pctGast}%" title="Gastos"></div>
+          <div class="rent-gastado" style="width:${pctGast}%" title="Gastos totales"></div>
         </div>
         <div style="display:flex;gap:12px;font-size:11px;margin-top:3px">
           <span style="color:#16a34a">■ Cobrado ${pctCobr}%</span>
-          <span style="color:#dc2626">■ Gastos ${pctGast}%</span>
+          <span style="color:#dc2626">■ Gastos totales ${pctGast}%</span>
         </div>
       </div>`;
     }).join('');
@@ -765,6 +774,12 @@ function renderAsistenciaForm(){
   const el=document.getElementById('asistencia-form');
   const activos=db.ayudantes.filter(a=>a.activo);
   if(!activos.length){el.innerHTML='<p style="font-size:13px;color:#bbb">Sin ayudantes activos.</p>';return;}
+  // Cargar select de cotizaciones aceptadas
+  const sel=document.getElementById('att-quote');
+  if(sel){
+    sel.innerHTML='<option value="">Sin asignar</option>'+
+      db.quotes.filter(q=>q.status==="accepted").map(q=>`<option value="${q.id}">${q.cliente} — ${q.desc}</option>`).join('');
+  }
   el.innerHTML=activos.map(a=>`
     <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #f0f0ec">
       <input type="checkbox" id="att-${a.id}" checked style="width:17px;height:17px;cursor:pointer;flex-shrink:0">
@@ -780,24 +795,30 @@ function saveAsistencia(){
   if(!fecha){alert('Selecciona la fecha.');return;}
   const activos=db.ayudantes.filter(a=>a.activo);
   if(!activos.length){alert('No hay ayudantes activos.');return;}
+  const qid=document.getElementById('att-quote').value;
+  const quoteId=qid?Number(qid):'';
   const registros=activos.map(a=>({ayudanteId:a.id,nombre:a.nombre,asistio:document.getElementById('att-'+a.id).checked,jornal:parseFloat(document.getElementById('att-j-'+a.id).value)||0}));
-  db.asistencias.push({id:Date.now(),fecha,registros});
+  db.asistencias.push({id:Date.now(),fecha,quoteId,registros});
   saveAndSync();renderAsistenciasHist();alert('✓ Asistencia guardada.');
 }
 function renderAsistenciasHist(){
   const el=document.getElementById('asistencias-hist');
   if(!db.asistencias.length){el.innerHTML='<div class="empty">Sin registros</div>';return;}
-  el.innerHTML=`<table><thead><tr><th>Fecha</th><th>Presentes</th><th>Ausentes</th><th>Gasto</th><th></th></tr></thead><tbody>${
+  el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Proyecto</th><th>Presentes</th><th>Ausentes</th><th>Gasto</th><th></th></tr></thead><tbody>${
     db.asistencias.slice().reverse().map(att=>{
       const pres=att.registros.filter(r=>r.asistio);
       const aus=att.registros.filter(r=>!r.asistio);
       const gasto=pres.reduce((s,r)=>s+r.jornal,0);
-      return`<tr><td>${att.fecha}</td><td class="green" style="font-size:12px">${pres.map(r=>r.nombre).join(', ')||'—'}</td>
+      const q=att.quoteId?db.quotes.find(q=>q.id===att.quoteId):null;
+      const proyLabel=q?`<span style="font-size:11px;font-weight:600;color:#185FA5">${q.cliente}<br><span style="color:#888;font-weight:400">${q.desc}</span></span>`:'<span style="color:#bbb;font-size:11px">Sin asignar</span>';
+      return`<tr><td style="white-space:nowrap">${att.fecha}</td>
+        <td>${proyLabel}</td>
+        <td class="green" style="font-size:12px">${pres.map(r=>r.nombre).join(', ')||'—'}</td>
         <td class="red" style="font-size:12px">${aus.map(r=>r.nombre).join(', ')||'—'}</td>
         <td class="red" style="font-weight:700">${fmt(gasto)}</td>
         <td><button class="btn btn-danger" onclick="deleteAsistencia(${att.id})">✕</button></td></tr>`;
     }).join('')
-  }</tbody></table>`;
+  }</tbody></table></div>`;
 }
 function deleteAsistencia(id){
   if(!confirm('¿Eliminar?'))return;
