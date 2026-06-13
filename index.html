@@ -90,6 +90,15 @@ tr:hover td{background:#fafafa}
 <body>
 
 <!-- CONFIG OVERLAY -->
+<!-- MODAL ALERT/CONFIRM PERSONALIZADO -->
+<div id="custom-modal" class="overlay" style="display:none;z-index:9999">
+  <div class="modal" style="max-width:360px;text-align:center">
+    <div style="font-size:15px;font-weight:700;color:#185FA5;margin-bottom:6px">📋 Control de Servicios M&M</div>
+    <div id="custom-modal-msg" style="font-size:14px;color:#333;margin-bottom:18px;line-height:1.6"></div>
+    <div id="custom-modal-btns" style="display:flex;gap:10px;justify-content:center"></div>
+  </div>
+</div>
+
 <div id="config-overlay" class="overlay">
   <div class="modal">
     <div class="modal-title">⚙️ Configuración inicial</div>
@@ -134,6 +143,17 @@ tr:hover td{background:#fafafa}
       <button class="btn btn-primary" style="flex:1;justify-content:center" onclick="saveEmpresa()">Guardar</button>
       <button class="btn" onclick="closeEmpresa()">Cancelar</button>
     </div>
+  </div>
+</div>
+
+<!-- DETALLE PROYECTO OVERLAY -->
+<div id="detalle-overlay" class="overlay" style="display:none">
+  <div class="modal" style="max-width:620px;width:100%">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="modal-title" id="detalle-title" style="margin:0"></div>
+      <button class="btn btn-sm" onclick="document.getElementById('detalle-overlay').style.display='none'">✕ Cerrar</button>
+    </div>
+    <div id="detalle-content"></div>
   </div>
 </div>
 
@@ -319,10 +339,26 @@ tr:hover td{background:#fafafa}
     <button class="btn btn-primary btn-block" onclick="saveAyudante()">+ Agregar ayudante</button>
   </div>
   <div class="card">
-    <div class="card-title">📅 Registrar asistencia del día</div>
-    <div class="row">
-      <div><label>Fecha</label><input type="date" id="att-fecha"></div>
-      <div><label>Proyecto (cotización)</label><select id="att-quote"><option value="">Sin asignar</option></select></div>
+    <div class="card-title">📅 Registrar asistencia</div>
+    <div class="tab-sub" style="margin-bottom:12px">
+      <button class="tab-sub-btn active" id="att-mode-day" onclick="switchAttMode('day',this)">Un día</button>
+      <button class="tab-sub-btn" id="att-mode-range" onclick="switchAttMode('range',this)">Rango de días</button>
+    </div>
+    <div id="att-day-form">
+      <div class="row">
+        <div><label>Fecha</label><input type="date" id="att-fecha"></div>
+        <div><label>Proyecto (cotización)</label><select id="att-quote"><option value="">Sin asignar</option></select></div>
+      </div>
+    </div>
+    <div id="att-range-form" style="display:none">
+      <div class="row3">
+        <div><label>Fecha inicio</label><input type="date" id="att-fecha-ini"></div>
+        <div><label>Fecha fin</label><input type="date" id="att-fecha-fin"></div>
+        <div><label>Proyecto (cotización)</label><select id="att-quote-range"><option value="">Sin asignar</option></select></div>
+      </div>
+      <div style="font-size:12px;color:#888;margin-bottom:8px;padding:8px;background:#f9f9f7;border-radius:8px">
+        Se registrará asistencia para cada día del rango seleccionado. Puedes indicar quién estuvo presente y su pago diario.
+      </div>
     </div>
     <div id="asistencia-form"></div>
     <button class="btn btn-success btn-block" onclick="saveAsistencia()" style="margin-top:10px">✓ Guardar asistencia</button>
@@ -510,8 +546,8 @@ function renderQuoteSummary(){
 function saveQuote(){
   const cliente=document.getElementById('q-cliente').value.trim();
   const desc=document.getElementById('q-desc').value.trim();
-  if(!cliente||!desc){alert('Completa el nombre del cliente y la descripción.');return;}
-  if(!items.length){alert('Agrega al menos un ítem.');return;}
+  if(!cliente||!desc){customAlert('Completa el nombre del cliente y la descripción.');return;}
+  if(!items.length){customAlert('Agrega al menos un ítem.');return;}
   const total=items.reduce((s,i)=>s+i.qty*i.price,0);
   const q={id:Date.now(),cliente,clienteRuc:document.getElementById('q-ruc').value.trim(),
     desc,fecha:document.getElementById('q-fecha').value,
@@ -528,7 +564,7 @@ function saveQuote(){
   ['q-cliente','q-ruc','q-desc','q-ref','q-fechaEntrega'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('q-fecha').value=today;
   renderItems();
-  alert('✓ Cotización guardada.');
+  customAlert('✓ Cotización guardada.');
 }
 
 const statusLabel={pending:'Enviada',accepted:'Aceptada',rejected:'Rechazada'};
@@ -595,7 +631,7 @@ function changeQuoteStatus(id,status){
       db.eventos.push({id:Date.now()+1,desc:'Entrega: '+q.cliente+' — '+q.desc,fecha:q.fechaEntrega,tipo:'entrega',quoteId:id});
     }
     if(q.fecha||q.fechaEntrega){
-      alert('✓ Cotización aceptada. Se agendó automáticamente en el calendario.');
+      customAlert('✓ Cotización aceptada. Se agendó automáticamente en el calendario.');
     }
   }
 
@@ -607,11 +643,11 @@ function changeQuoteStatus(id,status){
   saveAndSync();renderQuotesList();
 }
 function deleteQuote(id){
-  if(!confirm('¿Eliminar esta cotización?'))return;
+  customConfirm('¿Eliminar esta cotización y sus pagos asociados?',r=>{if(!r)return;
   db.quotes=db.quotes.filter(q=>q.id!==id);
   db.pagos=db.pagos.filter(p=>p.quoteId!==id);
   db.gastos=db.gastos.filter(g=>g.quoteId!==id);
-  saveAndSync();renderQuotesList();
+  saveAndSync();renderQuotesList();});
 }
 
 // PAGOS
@@ -628,12 +664,12 @@ function savePago(){
   const monto=parseFloat(document.getElementById('p-monto').value)||0;
   const fecha=document.getElementById('p-fecha').value;
   const nota=document.getElementById('p-nota').value.trim();
-  if(!qid||monto<=0){alert('Selecciona una cotización e ingresa un monto válido.');return;}
+  if(!qid||monto<=0){customAlert('Selecciona una cotización e ingresa un monto válido.');return;}
   db.pagos.push({id:Date.now(),quoteId:qid,monto,fecha,nota});
   saveAndSync();
   document.getElementById('p-monto').value='';document.getElementById('p-nota').value='';
   renderPagosList();renderPagoSelect();renderCobrosResumen();
-  alert('✓ Pago registrado.');
+  customAlert('✓ Pago registrado.');
 }
 function renderCobrosResumen(){
   const el=document.getElementById('cobros-resumen');
@@ -665,7 +701,7 @@ function renderPagosList(){
   }</tbody></table></div>`;
 }
 function deletePago(id){
-  if(!confirm('¿Eliminar este pago?'))return;
+  customConfirm('¿Eliminar este pago?',r=>{if(!r)return;
   db.pagos=db.pagos.filter(p=>p.id!==id);saveAndSync();
   renderPagosList();renderPagoSelect();renderCobrosResumen();renderDashboard();
 }
@@ -681,12 +717,12 @@ function closeGasto(){document.getElementById('gasto-overlay').style.display='no
 function saveGasto(){
   const desc=document.getElementById('g-desc').value.trim();
   const monto=parseFloat(document.getElementById('g-monto').value)||0;
-  if(!desc||monto<=0){alert('Completa descripción y monto.');return;}
+  if(!desc||monto<=0){customAlert('Completa descripción y monto.');return;}
   const qid=document.getElementById('g-quote').value;
   db.gastos.push({id:Date.now(),quoteId:qid?Number(qid):'',desc,monto,fecha:document.getElementById('g-fecha').value,tipo:document.getElementById('g-tipo').value});
   saveAndSync();closeGasto();
   document.getElementById('g-desc').value='';document.getElementById('g-monto').value='';
-  renderGastos();alert('✓ Gasto registrado.');
+  renderGastos();customAlert('✓ Gasto registrado.');
 }
 function renderGastos(){
   const el=document.getElementById('gastos-rentabilidad');
@@ -707,7 +743,10 @@ function renderGastos(){
       return`<div style="padding:12px 0;border-bottom:1px solid #f0f0ec">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px">
           <strong style="font-size:13px">${q.cliente} — ${q.desc}</strong>
-          <span class="${rentColor}" style="font-size:13px;font-weight:700">${utilidad>=0?'✓':'⚠'} ${fmt(utilidad)}</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button class="btn btn-sm" style="font-size:11px" onclick="verDetalleProyecto(${q.id})">🔍 Detalle</button>
+            <span class="${rentColor}" style="font-size:13px;font-weight:700">${utilidad>=0?'✓':'⚠'} ${fmt(utilidad)}</span>
+          </div>
         </div>
         <div style="font-size:12px;color:#888;margin-bottom:4px">
           Cotizado: ${fmt(q.total)} &nbsp;|&nbsp; Cobrado: <span class="green">${fmt(cobrado)}</span> &nbsp;|&nbsp; Materiales: <span class="red">${fmt(gastadoMat)}</span> &nbsp;|&nbsp; Mano de obra: <span class="red">${fmt(gastadoAyud)}</span>
@@ -738,15 +777,15 @@ function renderGastos(){
   }</tbody></table></div>`;
 }
 function deleteGasto(id){
-  if(!confirm('¿Eliminar este gasto?'))return;
-  db.gastos=db.gastos.filter(g=>g.id!==id);saveAndSync();renderGastos();
+  customConfirm('¿Eliminar este gasto?',r=>{if(!r)return;
+  db.gastos=db.gastos.filter(g=>g.id!==id);saveAndSync();renderGastos();});
 }
 
 // AYUDANTES
 function saveAyudante(){
   const nombre=document.getElementById('a-nombre').value.trim();
   const jornal=parseFloat(document.getElementById('a-jornal').value)||0;
-  if(!nombre){alert('Ingresa el nombre.');return;}
+  if(!nombre){customAlert('Ingresa el nombre.');return;}
   db.ayudantes.push({id:Date.now(),nombre,jornal,activo:true});
   saveAndSync();
   document.getElementById('a-nombre').value='';document.getElementById('a-jornal').value='';
@@ -790,16 +829,64 @@ function renderAsistenciaForm(){
       </div>
     </div>`).join('');
 }
+let attMode='day';
+
+function switchAttMode(mode, btn){
+  attMode=mode;
+  document.getElementById('att-day-form').style.display=mode==='day'?'block':'none';
+  document.getElementById('att-range-form').style.display=mode==='range'?'block':'none';
+  document.querySelectorAll('#att-mode-day,#att-mode-range').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  // Sync selects
+  if(mode==='range'){
+    const selR=document.getElementById('att-quote-range');
+    const selD=document.getElementById('att-quote');
+    selR.innerHTML=selD.innerHTML;
+  }
+}
+
+function getDatesInRange(startStr, endStr){
+  const dates=[];
+  const start=new Date(startStr+'T12:00:00');
+  const end=new Date(endStr+'T12:00:00');
+  if(start>end)return dates;
+  const cur=new Date(start);
+  while(cur<=end){
+    dates.push(cur.toISOString().split('T')[0]);
+    cur.setDate(cur.getDate()+1);
+  }
+  return dates;
+}
+
 function saveAsistencia(){
-  const fecha=document.getElementById('att-fecha').value;
-  if(!fecha){alert('Selecciona la fecha.');return;}
   const activos=db.ayudantes.filter(a=>a.activo);
-  if(!activos.length){alert('No hay ayudantes activos.');return;}
-  const qid=document.getElementById('att-quote').value;
-  const quoteId=qid?Number(qid):'';
-  const registros=activos.map(a=>({ayudanteId:a.id,nombre:a.nombre,asistio:document.getElementById('att-'+a.id).checked,jornal:parseFloat(document.getElementById('att-j-'+a.id).value)||0}));
-  db.asistencias.push({id:Date.now(),fecha,quoteId,registros});
-  saveAndSync();renderAsistenciasHist();alert('✓ Asistencia guardada.');
+  if(!activos.length){customAlert('No hay ayudantes activos.');return;}
+
+  if(attMode==='day'){
+    const fecha=document.getElementById('att-fecha').value;
+    if(!fecha){customAlert('Selecciona la fecha.');return;}
+    const qid=document.getElementById('att-quote').value;
+    const quoteId=qid?Number(qid):'';
+    const registros=activos.map(a=>({ayudanteId:a.id,nombre:a.nombre,asistio:document.getElementById('att-'+a.id).checked,jornal:parseFloat(document.getElementById('att-j-'+a.id).value)||0}));
+    db.asistencias.push({id:Date.now(),fecha,quoteId,registros});
+    saveAndSync();renderAsistenciasHist();customAlert('✓ Asistencia guardada.');
+
+  } else {
+    const ini=document.getElementById('att-fecha-ini').value;
+    const fin=document.getElementById('att-fecha-fin').value;
+    if(!ini||!fin){customAlert('Selecciona fecha de inicio y fin.');return;}
+    if(ini>fin){customAlert('La fecha de inicio debe ser antes que la fecha fin.');return;}
+    const dates=getDatesInRange(ini,fin);
+    if(dates.length>31){customAlert('El rango máximo es 31 días.');return;}
+    const qid=document.getElementById('att-quote-range').value;
+    const quoteId=qid?Number(qid):'';
+    const registros=activos.map(a=>({ayudanteId:a.id,nombre:a.nombre,asistio:document.getElementById('att-'+a.id).checked,jornal:parseFloat(document.getElementById('att-j-'+a.id).value)||0}));
+    dates.forEach((fecha,i)=>{
+      db.asistencias.push({id:Date.now()+i,fecha,quoteId,registros:[...registros.map(r=>({...r}))]});
+    });
+    saveAndSync();renderAsistenciasHist();
+    alert('✓ Asistencia registrada para '+dates.length+' días ('+ini+' al '+fin+').');
+  }
 }
 function renderAsistenciasHist(){
   const el=document.getElementById('asistencias-hist');
@@ -821,8 +908,8 @@ function renderAsistenciasHist(){
   }</tbody></table></div>`;
 }
 function deleteAsistencia(id){
-  if(!confirm('¿Eliminar?'))return;
-  db.asistencias=db.asistencias.filter(a=>a.id!==id);saveAndSync();renderAsistenciasHist();renderDashboard();
+  customConfirm('¿Eliminar este registro de asistencia?',r=>{if(!r)return;
+  db.asistencias=db.asistencias.filter(a=>a.id!==id);saveAndSync();renderAsistenciasHist();renderDashboard();});
 }
 
 // AGENDA
@@ -831,15 +918,15 @@ function closeEvento(){document.getElementById('evento-overlay').style.display='
 function saveEvento(){
   const desc=document.getElementById('ev-desc').value.trim();
   const fecha=document.getElementById('ev-fecha').value;
-  if(!desc||!fecha){alert('Completa descripción y fecha.');return;}
+  if(!desc||!fecha){customAlert('Completa descripción y fecha.');return;}
   db.eventos.push({id:Date.now(),desc,fecha,tipo:document.getElementById('ev-tipo').value});
   saveAndSync();closeEvento();
   document.getElementById('ev-desc').value='';
-  renderCalendar();renderEventosList();alert('✓ Evento guardado.');
+  renderCalendar();renderEventosList();customAlert('✓ Evento guardado.');
 }
 function deleteEvento(id){
-  if(!confirm('¿Eliminar?'))return;
-  db.eventos=db.eventos.filter(e=>e.id!==id);saveAndSync();renderCalendar();renderEventosList();
+  customConfirm('¿Eliminar este evento?',r=>{if(!r)return;
+  db.eventos=db.eventos.filter(e=>e.id!==id);saveAndSync();renderCalendar();renderEventosList();});
 }
 
 function renderCalendar(){
@@ -976,7 +1063,7 @@ function saveEmpresa(){
     cuentaBancaria:document.getElementById('e-cuenta').value.trim(),
     logoBase64:prev.logoBase64||null,
   };
-  saveAndSync();closeEmpresa();alert('✓ Datos de empresa guardados.');
+  saveAndSync();closeEmpresa();customAlert('✓ Datos de empresa guardados.');
 }
 
 // CONFIG
@@ -992,8 +1079,8 @@ function skipConfig(){document.getElementById('config-overlay').style.display='n
 // GENERAR PDF
 function generarWord(qid){
   const q=db.quotes.find(q=>q.id===qid);
-  if(!q){alert('Cotización no encontrada.');return;}
-  if(!window.jspdf||!window.jspdf.jsPDF){alert('La librería PDF aún está cargando. Espera un momento e intenta de nuevo.');return;}
+  if(!q){customAlert('Cotización no encontrada.');return;}
+  if(!window.jspdf||!window.jspdf.jsPDF){customAlert('La librería PDF aún está cargando. Espera un momento e intenta de nuevo.');return;}
   const {jsPDF}=window.jspdf;
   const e=db.empresa||{};
   const items=q.items||[];
@@ -1166,6 +1253,129 @@ function generarWord(qid){
   doc.save('Cotizacion_'+(q.cliente||'cliente').replace(/\s+/g,'_')+'_'+(q.fecha||'').replace(/-/g,'')+'.pdf');
 }
 
+
+// MODALES PERSONALIZADOS
+function customAlert(msg, cb){
+  document.getElementById('custom-modal-msg').textContent=msg;
+  document.getElementById('custom-modal-btns').innerHTML=
+    '<button class="btn btn-primary" style="min-width:80px" id="cm-ok">Aceptar</button>';
+  document.getElementById('custom-modal').style.display='flex';
+  document.getElementById('cm-ok').onclick=()=>{
+    document.getElementById('custom-modal').style.display='none';
+    if(cb)cb();
+  };
+}
+
+function customConfirm(msg, cb){
+  document.getElementById('custom-modal-msg').textContent=msg;
+  document.getElementById('custom-modal-btns').innerHTML=
+    '<button class="btn btn-primary" style="min-width:80px" id="cm-yes">Aceptar</button>'+
+    '<button class="btn" style="min-width:80px" id="cm-no">Cancelar</button>';
+  document.getElementById('custom-modal').style.display='flex';
+  document.getElementById('cm-yes').onclick=()=>{
+    document.getElementById('custom-modal').style.display='none';
+    cb(true);
+  };
+  document.getElementById('cm-no').onclick=()=>{
+    document.getElementById('custom-modal').style.display='none';
+    cb(false);
+  };
+}
+
+// DETALLE PROYECTO
+function verDetalleProyecto(qid){
+  const q=db.quotes.find(q=>q.id===qid);
+  if(!q)return;
+
+  const cobrado=db.pagos.filter(p=>p.quoteId===q.id).reduce((s,p)=>s+p.monto,0);
+  const gastosMat=db.gastos.filter(g=>g.quoteId===q.id);
+  const totalMat=gastosMat.reduce((s,g)=>s+g.monto,0);
+  const asistencias=db.asistencias.filter(a=>a.quoteId===q.id);
+
+  // Agrupar pagos de ayudantes por nombre
+  const pagosAyud={};
+  asistencias.forEach(att=>{
+    att.registros.filter(r=>r.asistio).forEach(r=>{
+      if(!pagosAyud[r.nombre])pagosAyud[r.nombre]={dias:0,total:0,detalle:[]};
+      pagosAyud[r.nombre].dias++;
+      pagosAyud[r.nombre].total+=r.jornal;
+      pagosAyud[r.nombre].detalle.push({fecha:att.fecha,jornal:r.jornal});
+    });
+  });
+  const totalAyud=Object.values(pagosAyud).reduce((s,a)=>s+a.total,0);
+  const totalGastos=totalMat+totalAyud;
+  const utilidad=cobrado-totalGastos;
+  const pendiente=q.total-cobrado;
+
+  // Pagos recibidos
+  const pagosRecibidos=db.pagos.filter(p=>p.quoteId===q.id);
+
+  document.getElementById('detalle-title').textContent='📊 '+q.cliente+' — '+q.desc;
+
+  let html=`
+  <!-- RESUMEN -->
+  <div class="metric-grid" style="margin-bottom:14px">
+    <div class="metric"><div class="metric-label">Cotizado</div><div class="metric-value blue">${fmt(q.total)}</div></div>
+    <div class="metric"><div class="metric-label">Cobrado</div><div class="metric-value green">${fmt(cobrado)}</div></div>
+    <div class="metric"><div class="metric-label">Por cobrar</div><div class="metric-value amber">${fmt(pendiente)}</div></div>
+    <div class="metric"><div class="metric-label">Gastos totales</div><div class="metric-value red">${fmt(totalGastos)}</div></div>
+    <div class="metric"><div class="metric-label">Utilidad</div><div class="metric-value ${utilidad>=0?'green':'red'}">${fmt(utilidad)}</div></div>
+  </div>
+
+  <!-- COBROS RECIBIDOS -->
+  <div style="margin-bottom:14px">
+    <div style="font-size:13px;font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between">
+      <span>💵 Pagos recibidos</span><span class="green">${fmt(cobrado)}</span>
+    </div>
+    ${pagosRecibidos.length?`<table style="width:100%"><thead><tr><th>Fecha</th><th>Monto</th><th>Nota</th></tr></thead><tbody>
+      ${pagosRecibidos.map(p=>`<tr><td>${p.fecha||'—'}</td><td class="green" style="font-weight:600">${fmt(p.monto)}</td><td style="color:#888;font-size:12px">${p.nota||'—'}</td></tr>`).join('')}
+    </tbody></table>`:'<p style="font-size:12px;color:#bbb">Sin pagos registrados</p>'}
+  </div>
+
+  <hr style="border:none;border-top:1px solid #eee;margin:10px 0">
+
+  <!-- GASTOS MATERIALES -->
+  <div style="margin-bottom:14px">
+    <div style="font-size:13px;font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between">
+      <span>📦 Gastos de materiales y otros</span><span class="red">${fmt(totalMat)}</span>
+    </div>
+    ${gastosMat.length?`<table style="width:100%"><thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Monto</th></tr></thead><tbody>
+      ${gastosMat.map(g=>`<tr>
+        <td style="font-size:12px;white-space:nowrap">${g.fecha||'—'}</td>
+        <td>${g.desc}</td>
+        <td><span class="badge" style="background:#f3f4f6;color:#555">${g.tipo}</span></td>
+        <td class="red" style="font-weight:600">${fmt(g.monto)}</td>
+      </tr>`).join('')}
+    </tbody></table>`:'<p style="font-size:12px;color:#bbb">Sin gastos registrados</p>'}
+  </div>
+
+  <hr style="border:none;border-top:1px solid #eee;margin:10px 0">
+
+  <!-- PAGO AYUDANTES -->
+  <div>
+    <div style="font-size:13px;font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between">
+      <span>👷 Pago a ayudantes</span><span class="red">${fmt(totalAyud)}</span>
+    </div>
+    ${Object.keys(pagosAyud).length?
+      Object.entries(pagosAyud).map(([nombre,data])=>`
+        <div style="margin-bottom:10px;padding:10px;background:#f9f9f7;border-radius:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-weight:600;font-size:13px">👤 ${nombre}</span>
+            <div style="text-align:right">
+              <span style="font-size:11px;color:#888">${data.dias} día(s)</span>
+              <span class="red" style="font-weight:700;margin-left:8px">${fmt(data.total)}</span>
+            </div>
+          </div>
+          <table style="width:100%;font-size:12px"><thead><tr><th>Fecha</th><th style="text-align:right">Pago del día</th></tr></thead><tbody>
+            ${data.detalle.map(d=>`<tr><td>${d.fecha}</td><td style="text-align:right;color:#dc2626">${fmt(d.jornal)}</td></tr>`).join('')}
+          </tbody></table>
+        </div>`).join('')
+      :'<p style="font-size:12px;color:#bbb">Sin registros de ayudantes para este proyecto</p>'}
+  </div>`;
+
+  document.getElementById('detalle-content').innerHTML=html;
+  document.getElementById('detalle-overlay').style.display='flex';
+}
 
 // INIT
 document.getElementById('q-fecha').value=today;
