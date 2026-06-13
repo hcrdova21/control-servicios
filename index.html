@@ -853,7 +853,7 @@ function serializeSheet(s){
   if(s==='quotes')return db.quotes.map(q=>[q.id,q.cliente,q.clienteRuc||'',q.desc,q.fecha,q.fechaEntrega||'',q.ref||'',q.total,q.status||'pending',JSON.stringify(q.items)]);
   if(s==='pagos')return db.pagos.map(p=>[p.id,p.quoteId,p.monto,p.fecha,p.nota||'']);
   if(s==='ayudantes')return db.ayudantes.map(a=>[a.id,a.nombre,a.jornal,a.activo?'1':'0']);
-  if(s==='asistencias')return db.asistencias.map(a=>[a.id,a.fecha,JSON.stringify(a.registros)]);
+  if(s==='asistencias')return db.asistencias.map(a=>[a.id,a.fecha,JSON.stringify(a.registros),a.quoteId||'']);
   if(s==='gastos')return db.gastos.map(g=>[g.id,g.quoteId||'',g.desc,g.monto,g.fecha,g.tipo]);
   if(s==='eventos')return db.eventos.map(e=>[e.id,e.desc,e.fecha,e.tipo]);
   return[];
@@ -884,8 +884,8 @@ function deserializeSheet(s,rows){
   }));
   if(s==='asistencias')return rows.map(r=>({
     id:safeNum(r[0]),fecha:safeStr(r[1]),
-    quoteId:safeId(r[3]),
-    registros:safeJSON(r[2],[])
+    registros:safeJSON(r[2],[]),
+    quoteId:safeId(r[3])
   }));
   if(s==='gastos')return rows.map(r=>({
     id:safeNum(r[0]),quoteId:safeId(r[1]),desc:safeStr(r[2]),
@@ -1627,12 +1627,18 @@ function generarWord(qid){
     }
   };
 
-  fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify(payload)})
-    .then(r=>r.json())
+  fetch(SCRIPT_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain'},
+    body:JSON.stringify(payload)
+  })
+    .then(r=>{
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    })
     .then(data=>{
       btn.innerHTML=originalText;btn.disabled=false;
       if(data.ok&&data.url){
-        // Abrir URL de descarga directa del PDF
         window.open(data.url,'_blank');
       } else {
         customAlert('Error al generar el PDF: '+(data.error||'Intenta de nuevo.'));
@@ -1640,7 +1646,7 @@ function generarWord(qid){
     })
     .catch(err=>{
       btn.innerHTML=originalText;btn.disabled=false;
-      customAlert('No se pudo conectar con el servidor. Verifica tu conexión.');
+      customAlert('Error de conexión ('+err.message+'). Verifica que el Apps Script esté publicado correctamente.');
     });
 }
 
