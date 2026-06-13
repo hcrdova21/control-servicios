@@ -703,7 +703,7 @@ function renderPagosList(){
 function deletePago(id){
   customConfirm('¿Eliminar este pago?',r=>{if(!r)return;
   db.pagos=db.pagos.filter(p=>p.id!==id);saveAndSync();
-  renderPagosList();renderPagoSelect();renderCobrosResumen();renderDashboard();
+  renderPagosList();renderPagoSelect();renderCobrosResumen();renderDashboard();});
 }
 
 // GASTOS
