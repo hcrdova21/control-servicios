@@ -937,44 +937,76 @@ function renderCalendar(){
   const first=new Date(calYear,calMonth,1).getDay();
   const days=new Date(calYear,calMonth+1,0).getDate();
   const todayStr=today;
+  // Recopilar eventos por fecha con su tipo
   const eventDates={};
-  db.eventos.forEach(e=>{if(e.fecha)eventDates[e.fecha]=(eventDates[e.fecha]||[])+1;});
-  // Entregas de cotizaciones aceptadas
-  db.quotes.filter(q=>q.status==='accepted'&&q.fechaEntrega).forEach(q=>{eventDates[q.fechaEntrega]=(eventDates[q.fechaEntrega]||0)+1;});
+  db.eventos.forEach(e=>{
+    if(!e.fecha)return;
+    if(!eventDates[e.fecha])eventDates[e.fecha]=[];
+    eventDates[e.fecha].push(e.tipo);
+  });
+  db.quotes.filter(q=>q.status==='accepted'&&q.fechaEntrega).forEach(q=>{
+    if(!eventDates[q.fechaEntrega])eventDates[q.fechaEntrega]=[];
+    eventDates[q.fechaEntrega].push('entrega');
+  });
+  db.quotes.filter(q=>q.status==='accepted'&&q.fecha).forEach(q=>{
+    if(!eventDates[q.fecha])eventDates[q.fecha]=[];
+    eventDates[q.fecha].push('inicio');
+  });
+  // Colores por tipo
+  const tipoColor={entrega:'#dc2626',inicio:'#16a34a',reunion:'#185FA5','no-disp':'#888'};
   let html='';
   for(let i=0;i<first;i++)html+=`<div class="cal-day empty-day"></div>`;
   for(let d=1;d<=days;d++){
     const dateStr=calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     const isToday=dateStr===todayStr;
-    const hasEv=eventDates[dateStr];
-    html+=`<div class="cal-day${isToday?' today':hasEv?' has-event':''}" title="${hasEv?'Tiene eventos':''}">${d}${hasEv?'<div style="font-size:9px;margin-top:1px">●</div>':''}</div>`;
+    const evs=eventDates[dateStr];
+    const isPast=dateStr<todayStr;
+    const dots=evs?[...new Set(evs)].slice(0,3).map(t=>`<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:${tipoColor[t]||'#185FA5'}"></span>`).join(''):'';
+    html+=`<div class="cal-day${isToday?' today':evs?' has-event':isPast?' past':''}" style="position:relative" title="${evs?evs.map(t=>t).join(', '):''}">
+      <div>${d}</div>
+      ${dots?`<div style="display:flex;justify-content:center;gap:2px;margin-top:1px">${dots}</div>`:''}
+    </div>`;
   }
   el.innerHTML=html;
 }
 function changeMonth(d){calMonth+=d;if(calMonth>11){calMonth=0;calYear++;}if(calMonth<0){calMonth=11;calYear--;}renderCalendar();}
 
+function fmtFecha(f){
+  if(!f)return'—';
+  const [y,m,d]=f.split('-');
+  const meses=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  return d+' '+meses[parseInt(m)-1]+' '+y;
+}
+
 function renderEventosList(){
   const el=document.getElementById('eventos-list');
   const all=[...db.eventos];
-  // Añadir fechas de entrega de cotizaciones aceptadas
   db.quotes.filter(q=>q.status==='accepted'&&q.fechaEntrega).forEach(q=>{
-    all.push({id:'q-'+q.id,desc:'Entrega: '+q.cliente+' — '+q.desc,fecha:q.fechaEntrega,tipo:'entrega',fromQuote:true});
+    all.push({id:'q-'+q.id,desc:q.cliente+' — '+q.desc,fecha:q.fechaEntrega,tipo:'entrega',fromQuote:true});
   });
   all.sort((a,b)=>a.fecha>b.fecha?1:-1);
   if(!all.length){el.innerHTML='<div class="empty">Sin eventos registrados</div>';return;}
   const tipoIcon={entrega:'🏁',inicio:'🚀',reunion:'🤝','no-disp':'🚫'};
-  el.innerHTML=`<table><thead><tr><th>Fecha</th><th>Evento</th><th>Tipo</th><th></th></tr></thead><tbody>${
-    all.map(e=>{
-      const isPast=e.fecha<today;
-      const isSoon=!isPast&&e.fecha<=(new Date(Date.now()+7*86400000).toISOString().split('T')[0]);
-      return`<tr style="${isPast?'opacity:0.5':''}">
-        <td style="font-weight:600;white-space:nowrap">${e.fecha}${isSoon?'<span style="color:#d97706;font-size:11px;margin-left:4px">⚡ Pronto</span>':''}</td>
-        <td>${e.desc}</td>
-        <td><span style="font-size:14px">${tipoIcon[e.tipo]||'📌'}</span></td>
-        <td>${e.fromQuote?'':'<button class="btn btn-danger" onclick="deleteEvento('+e.id+')">✕</button>'}</td>
-      </tr>`;
-    }).join('')
-  }</tbody></table>`;
+  const tipoLabel={entrega:'Entrega',inicio:'Inicio',reunion:'Reunión','no-disp':'No disponible'};
+  const soon=(new Date(Date.now()+7*86400000)).toISOString().split('T')[0];
+  el.innerHTML=all.map(e=>{
+    const isPast=e.fecha<today;
+    const isSoon=!isPast&&e.fecha<=soon;
+    const icon=tipoIcon[e.tipo]||'📌';
+    const label=tipoLabel[e.tipo]||e.tipo;
+    return`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f0f0ec;${isPast?'opacity:0.45':''}">
+      <div style="text-align:center;min-width:52px;background:${isSoon?'#fef9c3':isPast?'#f9f9f7':'#f0f5ff'};border-radius:8px;padding:6px 4px">
+        <div style="font-size:18px;line-height:1">${icon}</div>
+        <div style="font-size:10px;font-weight:700;color:${isSoon?'#854d0e':isPast?'#aaa':'#185FA5'};margin-top:2px">${fmtFecha(e.fecha).split(' ').slice(0,2).join(' ')}</div>
+        <div style="font-size:10px;color:#888">${fmtFecha(e.fecha).split(' ')[2]}</div>
+      </div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600">${e.desc}</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">${label}${isSoon?' · <span style="color:#d97706;font-weight:600">⚡ Esta semana</span>':''}</div>
+      </div>
+      ${e.fromQuote?'':`<button class="btn btn-danger" onclick="deleteEvento(${e.id})">✕</button>`}
+    </div>`;
+  }).join('');
 }
 
 // DASHBOARD
@@ -997,7 +1029,19 @@ function renderDashboard(){
   const en7=(new Date(Date.now()+7*86400000)).toISOString().split('T')[0];
   const proximos=[...db.eventos,...db.quotes.filter(q=>q.status==='accepted'&&q.fechaEntrega).map(q=>({desc:'Entrega: '+q.cliente,fecha:q.fechaEntrega}))].filter(e=>e.fecha>=today&&e.fecha<=en7);
   const alertasEl=document.getElementById('alertas-box');
-  alertasEl.innerHTML=proximos.length?`<div class="alert-box">⚡ <strong>Próximos 7 días:</strong> ${proximos.map(e=>e.desc+' ('+e.fecha+')').join(' · ')}</div>`:'';
+  if(proximos.length){
+    const items=proximos.slice(0,4).map(e=>{
+      const d=e.fecha.split('-');
+      const fechaCorta=d[2]+'/'+d[1];
+      return`<span style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid #fcd34d;border-radius:20px;padding:3px 10px;font-size:12px;white-space:nowrap">
+        <span style="font-weight:600">${fechaCorta}</span> ${e.desc.length>30?e.desc.substring(0,30)+'…':e.desc}
+      </span>`;
+    }).join('');
+    const extra=proximos.length>4?`<span style="font-size:12px;color:#888">+${proximos.length-4} más</span>`:'';
+    alertasEl.innerHTML=`<div class="alert-box" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span style="font-weight:700;font-size:12px;white-space:nowrap">⚡ Esta semana:</span>${items}${extra}</div>`;
+  } else {
+    alertasEl.innerHTML='';
+  }
 
   const dq=document.getElementById('dash-quotes');
   const accepted=db.quotes.filter(q=>q.status==='accepted').slice(-4).reverse();
@@ -1080,7 +1124,9 @@ function skipConfig(){document.getElementById('config-overlay').style.display='n
 function generarWord(qid){
   const q=db.quotes.find(q=>q.id===qid);
   if(!q){customAlert('Cotización no encontrada.');return;}
-  if(!window.jspdf||!window.jspdf.jsPDF){customAlert('La librería PDF aún está cargando. Espera un momento e intenta de nuevo.');return;}
+  if(!window.jspdf||!window.jspdf.jsPDF){
+    customAlert('La librería PDF no está disponible. Verifica tu conexión a internet e intenta recargar la página.');return;
+  }
   const {jsPDF}=window.jspdf;
   const e=db.empresa||{};
   const items=q.items||[];
