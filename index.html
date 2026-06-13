@@ -999,7 +999,7 @@ function renderQuotesList(){
   if(!qs.length){el.innerHTML='<div class="empty">Sin cotizaciones</div>';return;}
   el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Cliente</th><th>Referencia</th><th>Fecha</th><th>Total</th><th>Estado</th><th>Cobrado</th><th>Acciones</th></tr></thead><tbody>${
     qs.map(q=>{
-      const cobrado=db.pagos.filter(p=>p.quoteId===q.id).reduce((s,p)=>s+p.monto,0);
+      const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
       const pct=q.total>0?Math.min(100,Math.round(cobrado/q.total*100)):0;
       return`<tr>
         <td><strong>${q.cliente}</strong><br><span style="color:#888;font-size:11px">${q.desc}</span></td>
@@ -1066,7 +1066,7 @@ function renderPagoSelect(){
   const sel=document.getElementById('p-quote');
   const accepted=db.quotes.filter(q=>q.status==='accepted');
   sel.innerHTML='<option value="">Seleccionar cotización aceptada...</option>'+accepted.map(q=>{
-    const cobrado=db.pagos.filter(p=>p.quoteId===q.id).reduce((s,p)=>s+p.monto,0);
+    const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
     return`<option value="${q.id}">${q.cliente} — ${q.desc} (pendiente: ${fmt(q.total-cobrado)})</option>`;
   }).join('');
 }
@@ -1088,7 +1088,7 @@ function renderCobrosResumen(){
   if(!accepted.length){el.innerHTML='<div class="empty">Sin cotizaciones aceptadas</div>';return;}
   el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Cliente</th><th>Total</th><th>Cobrado</th><th>Pendiente</th><th>Estado</th></tr></thead><tbody>${
     accepted.map(q=>{
-      const cobrado=db.pagos.filter(p=>p.quoteId===q.id).reduce((s,p)=>s+p.monto,0);
+      const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
       const pend=q.total-cobrado;
       const status=cobrado>=q.total?'paid':cobrado>0?'partial':'pending';
       const labels={paid:'Pagado',partial:'Parcial',pending:'Pendiente'};
@@ -1141,16 +1141,16 @@ function renderGastos(){
   if(!accepted.length){el.innerHTML='<div class="empty">Sin cotizaciones aceptadas aún</div>';}
   else{
     el.innerHTML=accepted.map(q=>{
-      const cobrado=db.pagos.filter(p=>p.quoteId===q.id).reduce((s,p)=>s+p.monto,0);
-      const gastadoMat=db.gastos.filter(g=>g.quoteId===q.id).reduce((s,g)=>s+g.monto,0);
-      const gastadoAyud=db.asistencias.filter(a=>a.quoteId===q.id).reduce((s,att)=>s+att.registros.filter(r=>r.asistio).reduce((ss,r)=>ss+r.jornal,0),0);
+      const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
+      const gastadoMat=db.gastos.filter(g=>g.quoteId==q.id).reduce((s,g)=>s+g.monto,0);
+      const gastadoAyud=db.asistencias.filter(a=>a.quoteId==q.id).reduce((s,att)=>s+att.registros.filter(r=>r.asistio).reduce((ss,r)=>ss+r.jornal,0),0);
       const gastadoTotal=gastadoMat+gastadoAyud;
       const utilidad=cobrado-gastadoTotal;
       const pctGast=q.total>0?Math.min(100,Math.round(gastadoTotal/q.total*100)):0;
       const pctCobr=q.total>0?Math.min(100,Math.round(cobrado/q.total*100)):0;
       const rentColor=utilidad>=0?'green':'red';
       // Ayudantes que trabajaron en este proyecto
-      const ayudantesProyecto=[...new Set(db.asistencias.filter(a=>a.quoteId===q.id).flatMap(a=>a.registros.filter(r=>r.asistio).map(r=>r.nombre)))];
+      const ayudantesProyecto=[...new Set(db.asistencias.filter(a=>a.quoteId==q.id).flatMap(a=>a.registros.filter(r=>r.asistio).map(r=>r.nombre)))];
       return`<div style="padding:12px 0;border-bottom:1px solid #f0f0ec">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px">
           <strong style="font-size:13px">${q.cliente} — ${q.desc}</strong>
@@ -1181,7 +1181,7 @@ function renderGastos(){
       const q=g.quoteId?db.quotes.find(q=>q.id===g.quoteId):null;
       return`<tr><td>${g.desc}</td><td style="color:#888;font-size:12px">${q?q.cliente+' — '+q.desc:'General'}</td>
         <td><span class="badge" style="background:#f3f4f6;color:#555">${g.tipo}</span></td>
-        <td style="font-size:12px">${g.fecha||'—'}</td>
+        <td style="font-size:12px">${cleanFecha(g.fecha)||'—'}</td>
         <td class="red" style="font-weight:700">${fmt(g.monto)}</td>
         <td><button class="btn btn-danger" onclick="deleteGasto(${g.id})">✕</button></td></tr>`;
     }).join('')
@@ -1510,7 +1510,7 @@ function renderDashboard(){
   const accepted=db.quotes.filter(q=>q.status==='accepted').slice(-4).reverse();
   if(!accepted.length)dq.innerHTML='<div class="empty">Sin cotizaciones aceptadas</div>';
   else dq.innerHTML=`<table><thead><tr><th>Cliente</th><th>Total</th><th>Cobrado</th></tr></thead><tbody>${
-    accepted.map(q=>{const cobrado=db.pagos.filter(p=>p.quoteId===q.id).reduce((s,p)=>s+p.monto,0);
+    accepted.map(q=>{const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
       return`<tr><td>${q.cliente}<br><span style="color:#888;font-size:11px">${q.desc}</span></td><td>${fmt(q.total)}</td><td class="green">${fmt(cobrado)}</td></tr>`;
     }).join('')}</tbody></table>`;
 
@@ -1656,10 +1656,10 @@ function verDetalleProyecto(qid){
   const q=db.quotes.find(q=>q.id===qid);
   if(!q)return;
 
-  const cobrado=db.pagos.filter(p=>p.quoteId===q.id).reduce((s,p)=>s+p.monto,0);
-  const gastosMat=db.gastos.filter(g=>g.quoteId===q.id);
+  const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
+  const gastosMat=db.gastos.filter(g=>g.quoteId==q.id);
   const totalMat=gastosMat.reduce((s,g)=>s+g.monto,0);
-  const asistencias=db.asistencias.filter(a=>a.quoteId===q.id);
+  const asistencias=db.asistencias.filter(a=>a.quoteId==q.id);
 
   // Agrupar pagos de ayudantes por nombre
   const pagosAyud={};
@@ -1677,7 +1677,7 @@ function verDetalleProyecto(qid){
   const pendiente=q.total-cobrado;
 
   // Pagos recibidos
-  const pagosRecibidos=db.pagos.filter(p=>p.quoteId===q.id);
+  const pagosRecibidos=db.pagos.filter(p=>p.quoteId==q.id);
 
   document.getElementById('detalle-title').textContent='📊 '+q.cliente+' — '+q.desc;
 
@@ -1710,7 +1710,7 @@ function verDetalleProyecto(qid){
     </div>
     ${gastosMat.length?`<table style="width:100%"><thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Monto</th></tr></thead><tbody>
       ${gastosMat.map(g=>`<tr>
-        <td style="font-size:12px;white-space:nowrap">${g.fecha||'—'}</td>
+        <td style="font-size:12px;white-space:nowrap">${cleanFecha(g.fecha)||'—'}</td>
         <td>${g.desc}</td>
         <td><span class="badge" style="background:#f3f4f6;color:#555">${g.tipo}</span></td>
         <td class="red" style="font-weight:600">${fmt(g.monto)}</td>
