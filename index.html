@@ -1,1 +1,567 @@
-# control-servicios
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control de Servicios</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#f5f5f0;color:#1a1a1a;min-height:100vh}
+.topbar{background:#fff;border-bottom:1px solid #e5e5e0;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.topbar-title{font-size:16px;font-weight:600;color:#1a1a1a}
+.sync-status{font-size:12px;color:#888;display:flex;align-items:center;gap:6px}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#ccc}
+.sync-dot.ok{background:#22c55e}
+.sync-dot.syncing{background:#f59e0b;animation:pulse 1s infinite}
+.sync-dot.error{background:#ef4444}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.nav{background:#fff;border-bottom:1px solid #e5e5e0;display:flex;overflow-x:auto;padding:0 16px}
+.nav-btn{padding:12px 16px;border:none;background:none;cursor:pointer;font-size:14px;color:#666;white-space:nowrap;border-bottom:2px solid transparent;display:flex;align-items:center;gap:6px}
+.nav-btn.active{color:#185FA5;border-bottom-color:#185FA5;font-weight:500}
+.content{max-width:800px;margin:0 auto;padding:20px 16px}
+.card{background:#fff;border:1px solid #e5e5e0;border-radius:12px;padding:16px 20px;margin-bottom:16px}
+.card-title{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.section{display:none}.section.active{display:block}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+@media(max-width:500px){.row,.row3{grid-template-columns:1fr}}
+label{font-size:12px;color:#666;display:block;margin-bottom:4px;font-weight:500}
+input,select,textarea{width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff;color:#1a1a1a;outline:none}
+input:focus,select:focus{border-color:#185FA5}
+.btn{padding:8px 16px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:14px;color:#1a1a1a;display:inline-flex;align-items:center;gap:6px;transition:background 0.15s}
+.btn:hover{background:#f5f5f0}
+.btn-primary{background:#185FA5;color:#fff;border-color:#185FA5}
+.btn-primary:hover{background:#0C447C}
+.btn-success{background:#166534;color:#fff;border-color:#166534}
+.btn-success:hover{background:#14532d}
+.btn-danger{background:#fff;color:#dc2626;border-color:#fca5a5;padding:5px 9px;font-size:12px}
+.btn-danger:hover{background:#fef2f2}
+.btn-block{width:100%;justify-content:center;margin-top:4px}
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px}
+.metric{background:#f9f9f7;border-radius:10px;padding:12px 14px;text-align:center}
+.metric-label{font-size:11px;color:#888;margin-bottom:4px;font-weight:500;text-transform:uppercase;letter-spacing:0.03em}
+.metric-value{font-size:20px;font-weight:700}
+.green{color:#16a34a}.red{color:#dc2626}.amber{color:#d97706}.blue{color:#185FA5}
+.badge{display:inline-block;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600}
+.badge-pending{background:#fef9c3;color:#854d0e}
+.badge-partial{background:#dbeafe;color:#1e40af}
+.badge-paid{background:#dcfce7;color:#166534}
+.badge-active{background:#dcfce7;color:#166534}
+.badge-inactive{background:#f3f4f6;color:#6b7280}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:7px 8px;font-weight:600;font-size:11px;color:#888;border-bottom:1px solid #eee;text-transform:uppercase;letter-spacing:0.03em}
+td{padding:9px 8px;border-bottom:1px solid #f0f0ec}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafafa}
+.empty{text-align:center;padding:2rem;color:#999;font-size:14px}
+.progress-bar{background:#eee;border-radius:4px;height:5px;margin-top:5px;overflow:hidden}
+.progress-fill{height:100%;border-radius:4px;background:#16a34a}
+.item-row{display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap}
+.item-row>div{flex:1;min-width:80px}
+.divider{border:none;border-top:1px solid #eee;margin:14px 0}
+.sum-line{display:flex;justify-content:space-between;padding:5px 0;font-size:14px}
+.sum-line.total{font-weight:700;font-size:15px;border-top:1px solid #eee;padding-top:10px;margin-top:4px}
+.config-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:999;padding:16px}
+.config-box{background:#fff;border-radius:16px;padding:24px;max-width:480px;width:100%}
+.config-title{font-size:18px;font-weight:700;margin-bottom:8px}
+.config-desc{font-size:13px;color:#666;line-height:1.6;margin-bottom:16px}
+</style>
+</head>
+<body>
+
+<div id="config-overlay" class="config-overlay">
+  <div class="config-box">
+    <div class="config-title">⚙️ Configuración inicial</div>
+    <div class="config-desc">Para sincronizar los datos entre todos tus dispositivos, pega aquí la URL de tu Google Apps Script. Si no la tienes aún, sigue la guía que te compartieron.</div>
+    <label>URL de Google Apps Script</label>
+    <input type="text" id="script-url-input" placeholder="https://script.google.com/macros/s/.../exec" style="margin-bottom:12px">
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button class="btn btn-primary" style="flex:1;justify-content:center" onclick="saveConfig()">Guardar y continuar</button>
+      <button class="btn" onclick="skipConfig()">Usar sin sincronización</button>
+    </div>
+  </div>
+</div>
+
+<div class="topbar">
+  <div class="topbar-title">📋 Control de Servicios</div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div class="sync-status"><div class="sync-dot" id="sync-dot"></div><span id="sync-label">Sin configurar</span></div>
+    <button class="btn" style="font-size:12px;padding:5px 10px" onclick="showConfig()">⚙️</button>
+  </div>
+</div>
+
+<div class="nav">
+  <button class="nav-btn active" onclick="showTab('dashboard',this)">📊 Resumen</button>
+  <button class="nav-btn" onclick="showTab('cotizaciones',this)">📋 Cotizaciones</button>
+  <button class="nav-btn" onclick="showTab('pagos',this)">💰 Pagos</button>
+  <button class="nav-btn" onclick="showTab('ayudantes',this)">👷 Ayudantes</button>
+</div>
+
+<div class="content">
+
+<!-- DASHBOARD -->
+<div id="tab-dashboard" class="section active">
+  <div class="metric-grid" id="metrics"></div>
+  <div class="card">
+    <div class="card-title">📋 Últimas cotizaciones</div>
+    <div id="dash-quotes"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">👷 Últimos gastos en ayudantes</div>
+    <div id="dash-gastos"></div>
+  </div>
+</div>
+
+<!-- COTIZACIONES -->
+<div id="tab-cotizaciones" class="section">
+  <div class="card">
+    <div class="card-title">➕ Nueva cotización</div>
+    <div class="row">
+      <div><label>Cliente</label><input type="text" id="q-cliente" placeholder="Nombre del cliente"></div>
+      <div><label>Descripción del servicio</label><input type="text" id="q-desc" placeholder="Ej: Instalación eléctrica"></div>
+    </div>
+    <div style="margin-bottom:12px"><label>Fecha</label><input type="date" id="q-fecha" style="max-width:200px"></div>
+    <div class="divider"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span style="font-size:13px;font-weight:600">Ítems de la cotización</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="addItem('service')">+ Servicio</button>
+        <button class="btn" onclick="addItem('material')">+ Material</button>
+      </div>
+    </div>
+    <div id="items-container"></div>
+    <div class="divider"></div>
+    <div id="quote-summary"></div>
+    <button class="btn btn-primary btn-block" onclick="saveQuote()">✓ Guardar cotización</button>
+  </div>
+  <div class="card">
+    <div class="card-title">📁 Cotizaciones guardadas</div>
+    <div id="quotes-list"></div>
+  </div>
+</div>
+
+<!-- PAGOS -->
+<div id="tab-pagos" class="section">
+  <div class="card">
+    <div class="card-title">💵 Registrar pago recibido</div>
+    <div class="row">
+      <div><label>Cotización</label><select id="p-quote"><option value="">Seleccionar...</option></select></div>
+      <div><label>Monto recibido (S/.)</label><input type="number" id="p-monto" placeholder="0.00" min="0" step="0.01"></div>
+    </div>
+    <div class="row">
+      <div><label>Fecha del pago</label><input type="date" id="p-fecha"></div>
+      <div><label>Nota (opcional)</label><input type="text" id="p-nota" placeholder="Ej: Adelanto inicial"></div>
+    </div>
+    <button class="btn btn-success btn-block" onclick="savePago()">+ Registrar pago</button>
+  </div>
+  <div class="card">
+    <div class="card-title">📊 Estado de cobros por cotización</div>
+    <div id="cobros-resumen"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">🧾 Historial de pagos</div>
+    <div id="pagos-list"></div>
+  </div>
+</div>
+
+<!-- AYUDANTES -->
+<div id="tab-ayudantes" class="section">
+  <div class="card">
+    <div class="card-title">➕ Registrar ayudante</div>
+    <div class="row">
+      <div><label>Nombre</label><input type="text" id="a-nombre" placeholder="Nombre del ayudante"></div>
+      <div><label>Jornal base (S/. por día)</label><input type="number" id="a-jornal" placeholder="0.00" min="0" step="0.50"></div>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="saveAyudante()">+ Agregar ayudante</button>
+  </div>
+  <div class="card">
+    <div class="card-title">📅 Registrar asistencia del día</div>
+    <div style="margin-bottom:12px"><label>Fecha</label><input type="date" id="att-fecha" style="max-width:200px"></div>
+    <div id="asistencia-form"></div>
+    <button class="btn btn-success btn-block" onclick="saveAsistencia()" style="margin-top:12px">✓ Guardar asistencia</button>
+  </div>
+  <div class="card">
+    <div class="card-title">👥 Equipo de trabajo</div>
+    <div id="ayudantes-list"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">📋 Historial de asistencias</div>
+    <div id="asistencias-hist"></div>
+  </div>
+</div>
+
+</div>
+
+<script>
+const STORAGE_KEY = 'servicios_app_v1';
+let SCRIPT_URL = localStorage.getItem('script_url') || '';
+let db = {quotes:[], pagos:[], ayudantes:[], asistencias:[]};
+let items = [];
+let syncing = false;
+
+function loadLocal(){
+  try{ const d=localStorage.getItem(STORAGE_KEY); if(d) db=JSON.parse(d); }catch(e){}
+}
+function saveLocal(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }
+
+async function syncToSheets(){
+  if(!SCRIPT_URL || syncing) return;
+  syncing=true; setSyncStatus('syncing','Sincronizando...');
+  try{
+    const sheets = ['quotes','pagos','ayudantes','asistencias'];
+    for(const sheet of sheets){
+      const rows = serializeSheet(sheet);
+      await fetch(SCRIPT_URL, {method:'POST', body:JSON.stringify({sheet, rows})});
+    }
+    setSyncStatus('ok','Sincronizado ✓');
+  }catch(e){ setSyncStatus('error','Error de conexión'); }
+  syncing=false;
+}
+
+async function loadFromSheets(){
+  if(!SCRIPT_URL) return;
+  setSyncStatus('syncing','Cargando...');
+  try{
+    const sheets = ['quotes','pagos','ayudantes','asistencias'];
+    for(const sheet of sheets){
+      const r = await fetch(SCRIPT_URL+'?sheet='+sheet);
+      const data = await r.json();
+      if(data.rows && data.rows.length) db[sheet] = deserializeSheet(sheet, data.rows);
+    }
+    saveLocal();
+    setSyncStatus('ok','Sincronizado ✓');
+  }catch(e){ setSyncStatus('error','Error al cargar'); }
+}
+
+function serializeSheet(sheet){
+  if(sheet==='quotes') return db.quotes.map(q=>[q.id,q.cliente,q.desc,q.fecha,q.total,JSON.stringify(q.items)]);
+  if(sheet==='pagos') return db.pagos.map(p=>[p.id,p.quoteId,p.monto,p.fecha,p.nota]);
+  if(sheet==='ayudantes') return db.ayudantes.map(a=>[a.id,a.nombre,a.jornal,a.activo?'1':'0']);
+  if(sheet==='asistencias') return db.asistencias.map(a=>[a.id,a.fecha,JSON.stringify(a.registros)]);
+  return [];
+}
+
+function deserializeSheet(sheet, rows){
+  if(sheet==='quotes') return rows.map(r=>({id:Number(r[0]),cliente:r[1],desc:r[2],fecha:r[3],total:Number(r[4]),items:JSON.parse(r[5]||'[]')}));
+  if(sheet==='pagos') return rows.map(r=>({id:Number(r[0]),quoteId:Number(r[1]),monto:Number(r[2]),fecha:r[3],nota:r[4]}));
+  if(sheet==='ayudantes') return rows.map(r=>({id:Number(r[0]),nombre:r[1],jornal:Number(r[2]),activo:r[3]==='1'}));
+  if(sheet==='asistencias') return rows.map(r=>({id:Number(r[0]),fecha:r[1],registros:JSON.parse(r[2]||'[]')}));
+  return [];
+}
+
+function setSyncStatus(state, label){
+  const dot=document.getElementById('sync-dot');
+  const lbl=document.getElementById('sync-label');
+  dot.className='sync-dot '+state;
+  lbl.textContent=label;
+}
+
+function saveAndSync(){
+  saveLocal();
+  syncToSheets();
+}
+
+function fmt(n){ return 'S/. '+parseFloat(n||0).toFixed(2); }
+
+function showTab(t, btn){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+t).classList.add('active');
+  if(btn) btn.classList.add('active');
+  if(t==='dashboard') renderDashboard();
+  if(t==='cotizaciones'){ renderQuotesList(); renderQuoteSummary(); }
+  if(t==='pagos'){ renderPagoSelect(); renderPagosList(); renderCobrosResumen(); }
+  if(t==='ayudantes'){ renderAyudantesList(); renderAsistenciaForm(); renderAsistenciasHist(); }
+}
+
+function addItem(type){
+  items.push({id:Date.now(), type, desc:'', qty:1, price:0});
+  renderItems();
+}
+
+function renderItems(){
+  const c=document.getElementById('items-container');
+  if(!items.length){ c.innerHTML='<p style="color:#999;font-size:13px;text-align:center;padding:12px">Sin ítems. Agrega un servicio o material.</p>'; renderQuoteSummary(); return; }
+  c.innerHTML=items.map(it=>`
+    <div class="item-row">
+      <div style="flex:2"><label>${it.type==='service'?'🔧 Servicio':'📦 Material'}</label>
+        <input type="text" placeholder="Descripción" value="${it.desc.replace(/"/g,'&quot;')}" oninput="updateItem(${it.id},'desc',this.value)"></div>
+      <div style="flex:0.6;min-width:60px"><label>Cant.</label><input type="number" min="1" value="${it.qty}" oninput="updateItem(${it.id},'qty',this.value)"></div>
+      <div style="flex:1;min-width:80px"><label>Precio S/.</label><input type="number" min="0" step="0.01" value="${it.price}" oninput="updateItem(${it.id},'price',this.value)"></div>
+      <div><label>&nbsp;</label><button class="btn btn-danger" onclick="removeItem(${it.id})">✕</button></div>
+    </div>`).join('');
+  renderQuoteSummary();
+}
+
+function updateItem(id,field,val){
+  const it=items.find(i=>i.id===id); if(!it) return;
+  it[field]=field==='desc'?val:parseFloat(val)||0;
+  renderQuoteSummary();
+}
+function removeItem(id){ items=items.filter(i=>i.id!==id); renderItems(); }
+
+function renderQuoteSummary(){
+  const total=items.reduce((s,i)=>s+i.qty*i.price,0);
+  const srv=items.filter(i=>i.type==='service').reduce((s,i)=>s+i.qty*i.price,0);
+  const mat=items.filter(i=>i.type==='material').reduce((s,i)=>s+i.qty*i.price,0);
+  document.getElementById('quote-summary').innerHTML=`
+    <div class="sum-line"><span style="color:#666">Servicios</span><span>${fmt(srv)}</span></div>
+    <div class="sum-line"><span style="color:#666">Materiales</span><span>${fmt(mat)}</span></div>
+    <div class="sum-line total"><span>Total cotización</span><span class="green">${fmt(total)}</span></div>`;
+}
+
+function saveQuote(){
+  const cliente=document.getElementById('q-cliente').value.trim();
+  const desc=document.getElementById('q-desc').value.trim();
+  const fecha=document.getElementById('q-fecha').value;
+  if(!cliente||!desc){ alert('Completa el nombre del cliente y la descripción.'); return; }
+  if(!items.length){ alert('Agrega al menos un ítem.'); return; }
+  const total=items.reduce((s,i)=>s+i.qty*i.price,0);
+  db.quotes.push({id:Date.now(),cliente,desc,fecha,items:[...items],total});
+  saveAndSync();
+  items=[];
+  document.getElementById('q-cliente').value='';
+  document.getElementById('q-desc').value='';
+  renderItems(); renderQuotesList();
+  alert('✓ Cotización guardada.');
+}
+
+function quoteStatus(q){
+  const cobrado=db.pagos.filter(p=>p.quoteId===q.id).reduce((s,p)=>s+p.monto,0);
+  const pct=q.total>0?Math.min(100,Math.round(cobrado/q.total*100)):0;
+  if(cobrado>=q.total) return {status:'paid',label:'Pagado',cobrado,pct};
+  if(cobrado>0) return {status:'partial',label:'Parcial',cobrado,pct};
+  return {status:'pending',label:'Pendiente',cobrado,pct};
+}
+
+function renderQuotesList(){
+  const el=document.getElementById('quotes-list');
+  if(!db.quotes.length){ el.innerHTML='<div class="empty">Sin cotizaciones aún</div>'; return; }
+  el.innerHTML=`<table><thead><tr><th>Cliente</th><th>Servicio</th><th>Fecha</th><th>Total</th><th>Estado</th><th></th></tr></thead><tbody>${
+    db.quotes.slice().reverse().map(q=>{
+      const {status,label,cobrado,pct}=quoteStatus(q);
+      return `<tr>
+        <td><strong>${q.cliente}</strong></td><td>${q.desc}</td><td>${q.fecha||'—'}</td>
+        <td>${fmt(q.total)}</td>
+        <td><span class="badge badge-${status}">${label}</span>
+          <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+          <span style="font-size:11px;color:#888">${fmt(cobrado)} cobrado</span>
+        </td>
+        <td><button class="btn btn-danger" onclick="deleteQuote(${q.id})">✕</button></td>
+      </tr>`;}).join('')
+  }</tbody></table>`;
+}
+
+function deleteQuote(id){
+  if(!confirm('¿Eliminar esta cotización y sus pagos?')) return;
+  db.quotes=db.quotes.filter(q=>q.id!==id);
+  db.pagos=db.pagos.filter(p=>p.quoteId!==id);
+  saveAndSync(); renderQuotesList(); renderDashboard();
+}
+
+function renderPagoSelect(){
+  const sel=document.getElementById('p-quote');
+  sel.innerHTML='<option value="">Seleccionar cotización...</option>'+db.quotes.map(q=>{
+    const {cobrado}=quoteStatus(q);
+    const pendiente=q.total-cobrado;
+    return `<option value="${q.id}">${q.cliente} — ${q.desc} (pendiente: ${fmt(pendiente)})</option>`;
+  }).join('');
+}
+
+function savePago(){
+  const qid=parseInt(document.getElementById('p-quote').value);
+  const monto=parseFloat(document.getElementById('p-monto').value)||0;
+  const fecha=document.getElementById('p-fecha').value;
+  const nota=document.getElementById('p-nota').value.trim();
+  if(!qid||monto<=0){ alert('Selecciona una cotización e ingresa un monto válido.'); return; }
+  db.pagos.push({id:Date.now(),quoteId:qid,monto,fecha,nota});
+  saveAndSync();
+  document.getElementById('p-monto').value='';
+  document.getElementById('p-nota').value='';
+  renderPagosList(); renderPagoSelect(); renderCobrosResumen();
+  alert('✓ Pago registrado.');
+}
+
+function renderCobrosResumen(){
+  const el=document.getElementById('cobros-resumen');
+  if(!db.quotes.length){ el.innerHTML='<div class="empty">Sin cotizaciones</div>'; return; }
+  el.innerHTML=`<table><thead><tr><th>Cliente</th><th>Servicio</th><th>Total</th><th>Cobrado</th><th>Pendiente</th><th>Estado</th></tr></thead><tbody>${
+    db.quotes.slice().reverse().map(q=>{
+      const {status,label,cobrado,pct}=quoteStatus(q);
+      const pendiente=q.total-cobrado;
+      return `<tr>
+        <td>${q.cliente}</td><td>${q.desc}</td>
+        <td>${fmt(q.total)}</td>
+        <td class="green">${fmt(cobrado)}</td>
+        <td class="${pendiente>0?'amber':''}">${fmt(pendiente)}</td>
+        <td><span class="badge badge-${status}">${label}</span></td>
+      </tr>`;}).join('')
+  }</tbody></table>`;
+}
+
+function renderPagosList(){
+  const el=document.getElementById('pagos-list');
+  if(!db.pagos.length){ el.innerHTML='<div class="empty">Sin pagos registrados</div>'; return; }
+  el.innerHTML=`<table><thead><tr><th>Cliente</th><th>Fecha</th><th>Monto</th><th>Nota</th><th></th></tr></thead><tbody>${
+    db.pagos.slice().reverse().map(p=>{
+      const q=db.quotes.find(q=>q.id===p.quoteId)||{cliente:'—'};
+      return `<tr><td>${q.cliente}</td><td>${p.fecha||'—'}</td><td class="green" style="font-weight:600">${fmt(p.monto)}</td><td style="color:#888">${p.nota||'—'}</td>
+      <td><button class="btn btn-danger" onclick="deletePago(${p.id})">✕</button></td></tr>`;
+    }).join('')
+  }</tbody></table>`;
+}
+
+function deletePago(id){
+  if(!confirm('¿Eliminar este pago?')) return;
+  db.pagos=db.pagos.filter(p=>p.id!==id);
+  saveAndSync(); renderPagosList(); renderPagoSelect(); renderCobrosResumen(); renderDashboard();
+}
+
+function saveAyudante(){
+  const nombre=document.getElementById('a-nombre').value.trim();
+  const jornal=parseFloat(document.getElementById('a-jornal').value)||0;
+  if(!nombre){ alert('Ingresa el nombre.'); return; }
+  db.ayudantes.push({id:Date.now(),nombre,jornal,activo:true});
+  saveAndSync();
+  document.getElementById('a-nombre').value='';
+  document.getElementById('a-jornal').value='';
+  renderAyudantesList(); renderAsistenciaForm();
+}
+
+function renderAyudantesList(){
+  const el=document.getElementById('ayudantes-list');
+  if(!db.ayudantes.length){ el.innerHTML='<div class="empty">Sin ayudantes registrados</div>'; return; }
+  el.innerHTML=`<table><thead><tr><th>Nombre</th><th>Jornal base</th><th>Estado</th><th></th></tr></thead><tbody>${
+    db.ayudantes.map(a=>`<tr>
+      <td><strong>${a.nombre}</strong></td>
+      <td>${fmt(a.jornal)}/día</td>
+      <td><span class="badge badge-${a.activo?'active':'inactive'}">${a.activo?'Activo':'Pausado'}</span></td>
+      <td style="display:flex;gap:6px">
+        <button class="btn" style="font-size:12px;padding:5px 9px" onclick="toggleAyudante(${a.id})">${a.activo?'Pausar':'Activar'}</button>
+        <button class="btn btn-danger" onclick="deleteAyudante(${a.id})">✕</button>
+      </td>
+    </tr>`).join('')
+  }</tbody></table>`;
+}
+
+function toggleAyudante(id){
+  const a=db.ayudantes.find(a=>a.id===id); if(a) a.activo=!a.activo;
+  saveAndSync(); renderAyudantesList();
+}
+function deleteAyudante(id){
+  if(!confirm('¿Eliminar este ayudante?')) return;
+  db.ayudantes=db.ayudantes.filter(a=>a.id!==id);
+  saveAndSync(); renderAyudantesList(); renderAsistenciaForm();
+}
+
+function renderAsistenciaForm(){
+  const el=document.getElementById('asistencia-form');
+  const activos=db.ayudantes.filter(a=>a.activo);
+  if(!activos.length){ el.innerHTML='<p style="font-size:13px;color:#999">Sin ayudantes activos registrados.</p>'; return; }
+  el.innerHTML=activos.map(a=>`
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f0f0ec">
+      <input type="checkbox" id="att-${a.id}" checked style="width:18px;height:18px;cursor:pointer;flex-shrink:0">
+      <span style="flex:1;font-size:14px;font-weight:500">${a.nombre}</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:12px;margin:0;color:#888">S/.</label>
+        <input type="number" id="att-j-${a.id}" value="${a.jornal}" style="width:80px" min="0" step="0.50">
+        <span style="font-size:12px;color:#888">ese día</span>
+      </div>
+    </div>`).join('');
+}
+
+function saveAsistencia(){
+  const fecha=document.getElementById('att-fecha').value;
+  if(!fecha){ alert('Selecciona la fecha.'); return; }
+  const activos=db.ayudantes.filter(a=>a.activo);
+  if(!activos.length){ alert('No hay ayudantes activos.'); return; }
+  const registros=activos.map(a=>({
+    ayudanteId:a.id, nombre:a.nombre,
+    asistio:document.getElementById('att-'+a.id).checked,
+    jornal:parseFloat(document.getElementById('att-j-'+a.id).value)||0
+  }));
+  db.asistencias.push({id:Date.now(),fecha,registros});
+  saveAndSync(); renderAsistenciasHist();
+  alert('✓ Asistencia del '+fecha+' guardada.');
+}
+
+function renderAsistenciasHist(){
+  const el=document.getElementById('asistencias-hist');
+  if(!db.asistencias.length){ el.innerHTML='<div class="empty">Sin registros de asistencia</div>'; return; }
+  el.innerHTML=`<table><thead><tr><th>Fecha</th><th>Presentes</th><th>Ausentes</th><th>Gasto del día</th><th></th></tr></thead><tbody>${
+    db.asistencias.slice().reverse().map(att=>{
+      const presentes=att.registros.filter(r=>r.asistio);
+      const ausentes=att.registros.filter(r=>!r.asistio);
+      const gasto=presentes.reduce((s,r)=>s+r.jornal,0);
+      return `<tr>
+        <td>${att.fecha}</td>
+        <td class="green">${presentes.map(r=>r.nombre).join(', ')||'—'}</td>
+        <td class="red">${ausentes.map(r=>r.nombre).join(', ')||'—'}</td>
+        <td class="red" style="font-weight:600">${fmt(gasto)}</td>
+        <td><button class="btn btn-danger" onclick="deleteAsistencia(${att.id})">✕</button></td>
+      </tr>`;}).join('')
+  }</tbody></table>`;
+}
+
+function deleteAsistencia(id){
+  if(!confirm('¿Eliminar este registro de asistencia?')) return;
+  db.asistencias=db.asistencias.filter(a=>a.id!==id);
+  saveAndSync(); renderAsistenciasHist(); renderDashboard();
+}
+
+function renderDashboard(){
+  const totalCotizado=db.quotes.reduce((s,q)=>s+q.total,0);
+  const totalCobrado=db.pagos.reduce((s,p)=>s+p.monto,0);
+  const totalPendiente=totalCotizado-totalCobrado;
+  const totalAyudantes=db.asistencias.reduce((s,att)=>s+att.registros.filter(r=>r.asistio).reduce((ss,r)=>ss+r.jornal,0),0);
+  const balance=totalCobrado-totalAyudantes;
+  document.getElementById('metrics').innerHTML=`
+    <div class="metric"><div class="metric-label">Total cotizado</div><div class="metric-value blue">${fmt(totalCotizado)}</div></div>
+    <div class="metric"><div class="metric-label">Cobrado</div><div class="metric-value green">${fmt(totalCobrado)}</div></div>
+    <div class="metric"><div class="metric-label">Por cobrar</div><div class="metric-value amber">${fmt(totalPendiente)}</div></div>
+    <div class="metric"><div class="metric-label">Gasto ayudantes</div><div class="metric-value red">${fmt(totalAyudantes)}</div></div>
+    <div class="metric"><div class="metric-label">Balance neto</div><div class="metric-value ${balance>=0?'green':'red'}">${fmt(balance)}</div></div>`;
+  const dq=document.getElementById('dash-quotes');
+  if(!db.quotes.length){ dq.innerHTML='<div class="empty">Sin cotizaciones</div>'; }
+  else dq.innerHTML=`<table><thead><tr><th>Cliente</th><th>Total</th><th>Cobrado</th><th>Estado</th></tr></thead><tbody>${
+    db.quotes.slice(-5).reverse().map(q=>{
+      const {status,label,cobrado}=quoteStatus(q);
+      return `<tr><td>${q.cliente}<br><span style="font-size:11px;color:#888">${q.desc}</span></td><td>${fmt(q.total)}</td><td class="green">${fmt(cobrado)}</td><td><span class="badge badge-${status}">${label}</span></td></tr>`;
+    }).join('')}</tbody></table>`;
+  const dg=document.getElementById('dash-gastos');
+  if(!db.asistencias.length){ dg.innerHTML='<div class="empty">Sin registros de asistencia</div>'; }
+  else dg.innerHTML=`<table><thead><tr><th>Fecha</th><th>Ayudantes presentes</th><th>Gasto</th></tr></thead><tbody>${
+    db.asistencias.slice(-7).reverse().map(att=>{
+      const gasto=att.registros.filter(r=>r.asistio).reduce((s,r)=>s+r.jornal,0);
+      const presentes=att.registros.filter(r=>r.asistio).length;
+      return `<tr><td>${att.fecha}</td><td>${presentes} persona(s)</td><td class="red" style="font-weight:600">${fmt(gasto)}</td></tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+function showConfig(){
+  document.getElementById('script-url-input').value=SCRIPT_URL;
+  document.getElementById('config-overlay').style.display='flex';
+}
+function saveConfig(){
+  const url=document.getElementById('script-url-input').value.trim();
+  if(url){ SCRIPT_URL=url; localStorage.setItem('script_url',url); }
+  document.getElementById('config-overlay').style.display='none';
+  if(url) loadFromSheets().then(()=>renderDashboard());
+}
+function skipConfig(){
+  document.getElementById('config-overlay').style.display='none';
+  setSyncStatus('','Solo local');
+}
+
+const today=new Date().toISOString().split('T')[0];
+document.getElementById('q-fecha').value=today;
+document.getElementById('p-fecha').value=today;
+document.getElementById('att-fecha').value=today;
+
+loadLocal();
+if(SCRIPT_URL){ loadFromSheets().then(()=>renderDashboard()); document.getElementById('config-overlay').style.display='none'; }
+else { renderDashboard(); }
+renderItems();
+</script>
+</body>
+</html>
