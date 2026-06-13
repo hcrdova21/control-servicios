@@ -858,13 +858,42 @@ function serializeSheet(s){
   if(s==='eventos')return db.eventos.map(e=>[e.id,e.desc,e.fecha,e.tipo]);
   return[];
 }
+function safeJSON(str, fallback){
+  try{ return JSON.parse(str||'null')||fallback; }catch(e){ return fallback; }
+}
+function safeNum(v){ const n=Number(v); return isNaN(n)?0:n; }
+function safeStr(v){ return v==null?'':String(v); }
+function safeBool(v){ return v===true||v===1||v==='1'||v==='true'; }
+function safeId(v){ return v===''||v==null?'':Number(v); }
+
 function deserializeSheet(s,rows){
-  if(s==='quotes')return rows.map(r=>({id:Number(r[0]),cliente:r[1],clienteRuc:r[2],desc:r[3],fecha:r[4],fechaEntrega:r[5],ref:r[6],total:Number(r[7]),status:r[8]||'pending',items:JSON.parse(r[9]||'[]')}));
-  if(s==='pagos')return rows.map(r=>({id:Number(r[0]),quoteId:Number(r[1]),monto:Number(r[2]),fecha:r[3],nota:r[4]}));
-  if(s==='ayudantes')return rows.map(r=>({id:Number(r[0]),nombre:r[1],jornal:Number(r[2]),activo:r[3]==='1'}));
-  if(s==='asistencias')return rows.map(r=>({id:Number(r[0]),fecha:r[1],registros:JSON.parse(r[2]||'[]')}));
-  if(s==='gastos')return rows.map(r=>({id:Number(r[0]),quoteId:r[1]?Number(r[1]):'',desc:r[2],monto:Number(r[3]),fecha:r[4],tipo:r[5]}));
-  if(s==='eventos')return rows.map(r=>({id:Number(r[0]),desc:r[1],fecha:r[2],tipo:r[3]}));
+  if(s==='quotes')return rows.map(r=>({
+    id:safeNum(r[0]),cliente:safeStr(r[1]),clienteRuc:safeStr(r[2]),
+    desc:safeStr(r[3]),fecha:safeStr(r[4]),fechaEntrega:safeStr(r[5]),
+    ref:safeStr(r[6]),total:safeNum(r[7]),
+    status:safeStr(r[8])||'pending',
+    items:safeJSON(r[9],[])
+  }));
+  if(s==='pagos')return rows.map(r=>({
+    id:safeNum(r[0]),quoteId:safeNum(r[1]),monto:safeNum(r[2]),
+    fecha:safeStr(r[3]),nota:safeStr(r[4])
+  }));
+  if(s==='ayudantes')return rows.map(r=>({
+    id:safeNum(r[0]),nombre:safeStr(r[1]),jornal:safeNum(r[2]),
+    activo:safeBool(r[3])
+  }));
+  if(s==='asistencias')return rows.map(r=>({
+    id:safeNum(r[0]),fecha:safeStr(r[1]),
+    quoteId:safeId(r[3]),
+    registros:safeJSON(r[2],[])
+  }));
+  if(s==='gastos')return rows.map(r=>({
+    id:safeNum(r[0]),quoteId:safeId(r[1]),desc:safeStr(r[2]),
+    monto:safeNum(r[3]),fecha:safeStr(r[4]),tipo:safeStr(r[5])
+  }));
+  if(s==='eventos')return rows.map(r=>({
+    id:safeNum(r[0]),desc:safeStr(r[1]),fecha:safeStr(r[2]),tipo:safeStr(r[3])
+  }));
   return[];
 }
 
@@ -1188,7 +1217,7 @@ function renderAyudantesList(){
 }
 function toggleAyudante(id){const a=db.ayudantes.find(a=>a.id===id);if(a)a.activo=!a.activo;saveAndSync();renderAyudantesList();}
 function deleteAyudante(id){
-  if(!confirm('¿Eliminar?'))return;
+  if(!confirm('¿Eliminar este ayudante?'))return;
   db.ayudantes=db.ayudantes.filter(a=>a.id!==id);saveAndSync();renderAyudantesList();renderAsistenciaForm();
 }
 function renderAsistenciaForm(){
@@ -1560,213 +1589,61 @@ function saveConfig(){
 }
 function skipConfig(){document.getElementById('config-overlay').style.display='none';setSyncStatus('','Solo local');}
 
-// GENERAR PDF
+// GENERAR PDF VIA APPS SCRIPT
 function generarWord(qid){
   const q=db.quotes.find(q=>q.id===qid);
   if(!q){customAlert('Cotización no encontrada.');return;}
-  if(!window.jspdf||!window.jspdf.jsPDF){
-    customAlert('La librería PDF no está disponible. Verifica tu conexión a internet e intenta recargar la página.');return;
-  }
-  const {jsPDF}=window.jspdf;
-  const e=db.empresa||{};
-  const items=q.items||[];
-  const total=items.reduce((s,i)=>s+(parseFloat(i.qty)||0)*(parseFloat(i.price)||0),0);
-  const fmt2=n=>'S/. '+parseFloat(n||0).toFixed(2);
+  if(!SCRIPT_URL){customAlert('Configura la URL del Apps Script primero (botón ⚙️).');return;}
 
-  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-  const W=210, margin=16, contentW=W-margin*2;
-  let y=14;
+  // Mostrar indicador de carga
+  const btn=event.currentTarget;
+  const originalText=btn.innerHTML;
+  btn.innerHTML='⏳ Generando...';
+  btn.disabled=true;
 
-  // ── LOGO (si existe en empresa) ──
-  const logoData=e.logoBase64||null;
-  const headerStartY=y;
-  if(logoData){
-    try{
-      doc.addImage(logoData,'PNG',margin,y,22,22);
-    }catch(ex){}
-  }
-
-  // ── NOMBRE EMPRESA (centrado) ──
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(15);
-  doc.setTextColor(0,0,0);
-  doc.text(e.nombre||'', W/2, y+5, {align:'center'}); 
-  
-  doc.setFont('helvetica','italic');
-  doc.setFontSize(9);
-  doc.setTextColor(60,60,60);
-  doc.text('Ruc: '+(e.ruc||''), W/2, y+11, {align:'center'});
-
-  doc.setFont('helvetica','italic');
-  doc.setFontSize(8);
-  doc.text(e.servicios||'', W/2, y+16, {align:'center'});
-
-  y+=26;
-
-  // ── LÍNEA SUPERIOR ──
-  doc.setDrawColor(0,0,0);doc.setLineWidth(0.5);
-  doc.line(margin, y, W-margin, y); y+=1;
-  doc.line(margin, y+0.5, W-margin, y+0.5); y+=4;
-
-  // ── DIRECCIÓN / TELÉFONO / WEB (pie del encabezado) ──
-  doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(50,50,50);
-  const footerLine=(e.direccion||'')+' Teléfono: '+(e.telefono||'');
-  doc.text(footerLine, W/2, y, {align:'center'}); y+=4;
-  if(e.web){
-    doc.setTextColor(24,95,165);
-    doc.text(e.web, W/2, y, {align:'center'}); y+=4;
-  }
-  doc.setTextColor(0,0,0);
-
-  // ── LÍNEA DOBLE SEPARADORA ──
-  doc.setDrawColor(0,0,0);doc.setLineWidth(0.5);
-  doc.line(margin, y, W-margin, y); y+=1;
-  doc.line(margin, y+0.5, W-margin, y+0.5); y+=6;
-
-  // ── INFO CLIENTE (tabla sin bordes, 2 columnas) ──
-  doc.setFontSize(9);
-  const lw=30; // label width
-  const col1x=margin, col2x=margin+lw;
-  const col3x=W/2+4, col4x=W-margin;
-
-  function labelVal(label, val, x1, x2, yy){
-    doc.setFont('helvetica','bold'); doc.text(label, x1, yy);
-    doc.setFont('helvetica','normal'); doc.text(val||'', x2, yy);
-  }
-  function labelValRight(label, val, x1, x2, yy){
-    doc.setFont('helvetica','bold'); doc.text(label, x1, yy);
-    doc.setFont('helvetica','normal'); doc.text(val||'', x2, yy, {align:'right'});
-  }
-
-  labelVal('CLIENTE:', q.cliente||'', col1x, col2x, y);
-  labelValRight('Pág. 1 de 1', '', col3x, col4x, y); y+=5;
-
-  labelVal('RUC:', q.clienteRuc||'', col1x, col2x, y);
-  labelValRight('N° / REF.:', String(q.ref||q.id||''), col3x, col4x, y); y+=5;
-
-  labelVal('A / REF.:', q.desc||'', col1x, col2x, y);
-  labelValRight('', q.fecha||'', col3x, col4x, y); y+=6;
-
-  // ── TÍTULO COTIZACIÓN ──
-  doc.setFont('helvetica','bold');doc.setFontSize(10);
-  doc.text('COTIZACIÓN:', col1x, y); y+=4;
-
-  // ── TABLA ÍTEMS ──
-  const tableBody=items.map((it,idx)=>[
-    idx+1,
-    parseFloat(it.qty)||1,
-    it.desc||'',
-    fmt2(it.price),
-    fmt2((parseFloat(it.qty)||0)*(parseFloat(it.price)||0))
-  ]);
-
-  doc.autoTable({
-    startY: y,
-    margin:{left:margin,right:margin},
-    head:[['ITEM.','CANT.','DESCRIPCION','P. UNIT.','P. TOTAL.']],
-    body: tableBody,
-    foot:[['','','','',fmt2(total)]],
-    headStyles:{
-      fillColor:[255,255,255],textColor:[0,0,0],fontStyle:'bold',
-      fontSize:8,halign:'center',
-      lineColor:[0,0,0],lineWidth:0.3,
+  const payload={
+    action:'generatePDF',
+    quote:{
+      id:q.id,
+      ref:q.ref||'',
+      cliente:q.cliente||'',
+      clienteRuc:q.clienteRuc||'',
+      desc:q.desc||'',
+      fecha:q.fecha||'',
+      items:q.items||[],
     },
-    footStyles:{
-      fillColor:[255,255,255],textColor:[0,0,0],fontStyle:'bold',
-      fontSize:9,halign:'right',
-      lineColor:[0,0,0],lineWidth:0.3,
-    },
-    columnStyles:{
-      0:{halign:'center',cellWidth:14},
-      1:{halign:'center',cellWidth:14},
-      2:{cellWidth:'auto',halign:'left'},
-      3:{halign:'right',cellWidth:26},
-      4:{halign:'right',cellWidth:26}
-    },
-    bodyStyles:{fontSize:8,textColor:[0,0,0],lineColor:[0,0,0],lineWidth:0.2},
-    alternateRowStyles:{fillColor:[255,255,255]},
-    styles:{lineColor:[0,0,0],lineWidth:0.2},
-    theme:'grid',
-    didDrawPage:()=>{}
-  });
+    empresa:{
+      nombre:db.empresa.nombre||'',
+      ruc:db.empresa.ruc||'',
+      servicios:db.empresa.servicios||'',
+      direccion:db.empresa.direccion||'',
+      telefono:db.empresa.telefono||'',
+      web:db.empresa.web||'',
+      firmaNombre:db.empresa.firmaNombre||'',
+      condPrecios:db.empresa.condPrecios||'',
+      condPago:db.empresa.condPago||'',
+      condEntrega:db.empresa.condEntrega||'',
+      cuentaBancaria:db.empresa.cuentaBancaria||'',
+    }
+  };
 
-  y=doc.lastAutoTable.finalY+8;
-
-  // ── CONDICIONES COMERCIALES ──
-  doc.setFont('helvetica','bold');doc.setFontSize(8.5);
-  doc.setTextColor(0,0,0);
-  doc.text('CONDICIONES COMERCIALES:', margin, y);
-  // Subrayado manual
-  const tw=doc.getTextWidth('CONDICIONES COMERCIALES:');
-  doc.setLineWidth(0.3);doc.line(margin, y+0.8, margin+tw, y+0.8);
-  y+=5;
-
-  function condBlock(titulo, texto){
-    doc.setFont('helvetica','bold');doc.setFontSize(8);
-    doc.text(titulo, margin, y);
-    const tw2=doc.getTextWidth(titulo);
-    doc.setLineWidth(0.2);doc.line(margin, y+0.7, margin+tw2, y+0.7);
-    y+=4;
-    doc.setFont('helvetica','normal');doc.setFontSize(8);
-    const lines=(texto||'').split('\n');
-    lines.forEach(l=>{
-      if(l.trim()){doc.text(l.trim(), margin, y);y+=4;}
+  fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify(payload)})
+    .then(r=>r.json())
+    .then(data=>{
+      btn.innerHTML=originalText;btn.disabled=false;
+      if(data.ok&&data.url){
+        // Abrir URL de descarga directa del PDF
+        window.open(data.url,'_blank');
+      } else {
+        customAlert('Error al generar el PDF: '+(data.error||'Intenta de nuevo.'));
+      }
+    })
+    .catch(err=>{
+      btn.innerHTML=originalText;btn.disabled=false;
+      customAlert('No se pudo conectar con el servidor. Verifica tu conexión.');
     });
-    y+=2;
-  }
-
-  condBlock('PRECIOS', e.condPrecios||'');
-  condBlock('FORMA DE PAGO:', e.condPago||'');
-  condBlock('TIEMPO DE ENTREGA:', e.condEntrega||'');
-
-  // ── FIRMA ──
-  y+=6;
-  doc.setFont('helvetica','normal');doc.setFontSize(9);
-  doc.text('………………………………', margin, y); y+=5;
-  doc.setFont('helvetica','bold'); doc.text(e.firmaNombre||'', margin, y); y+=5;
-  doc.setFont('helvetica','normal'); doc.text(e.nombre||'', margin, y); y+=5;
-  doc.text('Celular '+(e.telefono||''), margin, y);
-
-  // ── PIE DE PÁGINA ──
-  const pageH=297;
-  doc.setDrawColor(0,0,0);doc.setLineWidth(0.4);
-  doc.line(margin, pageH-16, W-margin, pageH-16);
-  doc.setFontSize(7.5);doc.setTextColor(60,60,60);
-  const cta=e.cuentaBancaria||'';
-  if(cta){doc.text(cta, W/2, pageH-11, {align:'center'});}
-  doc.text((e.web||''), W/2, pageH-7, {align:'center'});
-
-  doc.save('Cotizacion_'+(q.cliente||'cliente').replace(/\s+/g,'_')+'_'+(q.fecha||'').replace(/-/g,'')+'.pdf');
 }
 
-
-// MODALES PERSONALIZADOS
-function customAlert(msg, cb){
-  document.getElementById('custom-modal-msg').textContent=msg;
-  document.getElementById('custom-modal-btns').innerHTML=
-    '<button class="btn btn-primary" style="min-width:80px" id="cm-ok">Aceptar</button>';
-  document.getElementById('custom-modal').style.display='flex';
-  document.getElementById('cm-ok').onclick=()=>{
-    document.getElementById('custom-modal').style.display='none';
-    if(cb)cb();
-  };
-}
-
-function customConfirm(msg, cb){
-  document.getElementById('custom-modal-msg').textContent=msg;
-  document.getElementById('custom-modal-btns').innerHTML=
-    '<button class="btn btn-primary" style="min-width:80px" id="cm-yes">Aceptar</button>'+
-    '<button class="btn" style="min-width:80px" id="cm-no">Cancelar</button>';
-  document.getElementById('custom-modal').style.display='flex';
-  document.getElementById('cm-yes').onclick=()=>{
-    document.getElementById('custom-modal').style.display='none';
-    cb(true);
-  };
-  document.getElementById('cm-no').onclick=()=>{
-    document.getElementById('custom-modal').style.display='none';
-    cb(false);
-  };
-}
 
 // DETALLE PROYECTO
 function verDetalleProyecto(qid){
