@@ -481,6 +481,15 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
   </div>
 </div>
 
+<!-- MODAL PERSONALIZADO -->
+<div id="custom-modal" class="overlay" style="display:none;z-index:9999">
+  <div class="modal" style="max-width:360px;text-align:center">
+    <div style="font-size:15px;font-weight:700;color:#185FA5;margin-bottom:6px">📋 Control de Servicios M&M</div>
+    <div id="custom-modal-msg" style="font-size:14px;color:#333;margin-bottom:18px;line-height:1.6"></div>
+    <div id="custom-modal-btns" style="display:flex;gap:10px;justify-content:center"></div>
+  </div>
+</div>
+
 <div id="config-overlay" class="overlay">
   <div class="modal">
     <div class="modal-title">⚙️ Configuración inicial</div>
@@ -786,6 +795,20 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
 </div>
 
 <script>
+function customAlert(msg,cb){
+  document.getElementById('custom-modal-msg').textContent=msg;
+  document.getElementById('custom-modal-btns').innerHTML='<button class="btn btn-primary" style="min-width:80px" id="cm-ok">Aceptar</button>';
+  document.getElementById('custom-modal').style.display='flex';
+  document.getElementById('cm-ok').onclick=()=>{document.getElementById('custom-modal').style.display='none';if(cb)cb();};
+}
+function customConfirm(msg,cb){
+  document.getElementById('custom-modal-msg').textContent=msg;
+  document.getElementById('custom-modal-btns').innerHTML='<button class="btn btn-primary" style="min-width:80px" id="cm-yes">Aceptar</button><button class="btn" style="min-width:80px" id="cm-no">Cancelar</button>';
+  document.getElementById('custom-modal').style.display='flex';
+  document.getElementById('cm-yes').onclick=()=>{document.getElementById('custom-modal').style.display='none';cb(true);};
+  document.getElementById('cm-no').onclick=()=>{document.getElementById('custom-modal').style.display='none';cb(false);};
+}
+
 const STORAGE_KEY='servicios_v2';
 let SCRIPT_URL=localStorage.getItem('script_url')||'';
 let calMonth=new Date().getMonth(), calYear=new Date().getFullYear();
@@ -943,7 +966,7 @@ function renderItems(){
   renderQuoteSummary();
 }
 function updateItem(id,f,v){const it=items.find(i=>i.id===id);if(!it)return;it[f]=f==='desc'?v:parseFloat(v)||0;renderQuoteSummary();}
-function removeItem(id){items=items.filter(i=>i.id!==id);renderItems();}
+function removeItem(id){items=items.filter(i=>i.id!=id);renderItems();}
 function renderQuoteSummary(){
   const total=items.reduce((s,i)=>s+i.qty*i.price,0);
   const srv=items.filter(i=>i.type==='service').reduce((s,i)=>s+i.qty*i.price,0);
@@ -1055,7 +1078,7 @@ function changeQuoteStatus(id,status){
 }
 function deleteQuote(id){
   customConfirm('¿Eliminar esta cotización y sus pagos asociados?',r=>{if(!r)return;
-  db.quotes=db.quotes.filter(q=>q.id!==id);
+  db.quotes=db.quotes.filter(q=>q.id!=id);
   db.pagos=db.pagos.filter(p=>p.quoteId!==id);
   db.gastos=db.gastos.filter(g=>g.quoteId!==id);
   saveAndSync();renderQuotesList();});
@@ -1113,7 +1136,7 @@ function renderPagosList(){
 }
 function deletePago(id){
   customConfirm('¿Eliminar este pago?',r=>{if(!r)return;
-  db.pagos=db.pagos.filter(p=>p.id!==id);saveAndSync();
+  db.pagos=db.pagos.filter(p=>p.id!=id);saveAndSync();
   renderPagosList();renderPagoSelect();renderCobrosResumen();renderDashboard();});
 }
 
@@ -1189,7 +1212,7 @@ function renderGastos(){
 }
 function deleteGasto(id){
   customConfirm('¿Eliminar este gasto?',r=>{if(!r)return;
-  db.gastos=db.gastos.filter(g=>g.id!==id);saveAndSync();renderGastos();});
+  db.gastos=db.gastos.filter(g=>g.id!=id);saveAndSync();renderGastos();});
 }
 
 // AYUDANTES
@@ -1217,8 +1240,8 @@ function renderAyudantesList(){
 }
 function toggleAyudante(id){const a=db.ayudantes.find(a=>a.id===id);if(a)a.activo=!a.activo;saveAndSync();renderAyudantesList();}
 function deleteAyudante(id){
-  if(!confirm('¿Eliminar este ayudante?'))return;
-  db.ayudantes=db.ayudantes.filter(a=>a.id!==id);saveAndSync();renderAyudantesList();renderAsistenciaForm();
+  customConfirm('¿Eliminar este ayudante?',r=>{if(!r)return;
+  db.ayudantes=db.ayudantes.filter(a=>a.id!=id);saveAndSync();renderAyudantesList();renderAsistenciaForm();});
 }
 function renderAsistenciaForm(){
   const el=document.getElementById('asistencia-form');
@@ -1320,7 +1343,7 @@ function renderAsistenciasHist(){
 }
 function deleteAsistencia(id){
   customConfirm('¿Eliminar este registro de asistencia?',r=>{if(!r)return;
-  db.asistencias=db.asistencias.filter(a=>a.id!==id);saveAndSync();renderAsistenciasHist();renderDashboard();});
+  db.asistencias=db.asistencias.filter(a=>a.id!=id);saveAndSync();renderAsistenciasHist();renderDashboard();});
 }
 
 // AGENDA
@@ -1337,7 +1360,7 @@ function saveEvento(){
 }
 function deleteEvento(id){
   customConfirm('¿Eliminar este evento?',r=>{if(!r)return;
-  db.eventos=db.eventos.filter(e=>e.id!==id);saveAndSync();renderCalendar();renderEventosList();});
+  db.eventos=db.eventos.filter(e=>e.id!=id);saveAndSync();renderCalendar();renderEventosList();});
 }
 
 function renderCalendar(){
