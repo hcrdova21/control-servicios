@@ -608,6 +608,21 @@ function saveQuote(){
   if(!cliente||!desc){customAlert('Completa el nombre del cliente y la descripción.');return;}
   if(!items.length){customAlert('Agrega al menos un ítem.');return;}
   const total=items.reduce((s,i)=>s+i.qty*i.price,0);
+
+  // MODO EDICIÓN — actualizar cotización existente
+  if(editingQuoteId){
+    const q=db.quotes.find(q=>q.id==editingQuoteId);
+    if(q){
+      q.items=[...items];
+      q.total=total;
+    }
+    saveAndSync();
+    cancelarEdicion();
+    customAlert('✓ Cotización actualizada correctamente.');
+    return;
+  }
+
+  // MODO CREACIÓN — nueva cotización
   const q={id:Date.now(),cliente,clienteRuc:document.getElementById('q-ruc').value.trim(),
     desc,fecha:document.getElementById('q-fecha').value,
     fechaEntrega:document.getElementById('q-fechaEntrega').value,
