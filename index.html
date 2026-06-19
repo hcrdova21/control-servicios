@@ -603,11 +603,11 @@ async function loadFromSheets(){
 
 function serializeEmpresa(){
   const e=db.empresa;
-  return [[e.nombre||'',e.ruc||'',e.servicios||'',e.direccion||'',e.telefono||'',e.web||'',e.firmaNombre||'',e.condPrecios||'',e.condPago||'',e.condEntrega||'']];
+  return [[e.nombre||'',e.ruc||'',e.servicios||'',e.direccion||'',e.telefono||'',e.web||'',e.firmaNombre||'',e.condPrecios||'',e.condPago||'',e.condEntrega||'',e.cuentaBancaria||'']];
 }
 function deserializeEmpresa(rows){
   const r=rows[0];
-  return{nombre:r[0],ruc:r[1],servicios:r[2],direccion:r[3],telefono:r[4],web:r[5],firmaNombre:r[6],condPrecios:r[7],condPago:r[8],condEntrega:r[9]};
+  return{nombre:r[0],ruc:r[1],servicios:r[2],direccion:r[3],telefono:r[4],web:r[5],firmaNombre:r[6],condPrecios:r[7],condPago:r[8],condEntrega:r[9],cuentaBancaria:r[10]||''};
 }
 function serializeSheet(s){
   if(s==='quotes')return db.quotes.map(q=>[q.id,q.cliente,q.clienteRuc||'',q.desc,q.fecha,q.fechaEntrega||'',q.ref||'',q.total,q.status||'pending',JSON.stringify(q.items)]);
