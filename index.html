@@ -666,6 +666,7 @@ function renderQuotesList(){
         </td>
         <td>
           <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <button class="btn btn-sm" style="font-size:11px" onclick="editarCotizacion(${q.id})">✏️ Editar</button>
             <button class="btn btn-sm" style="font-size:11px" onclick="generarWord(${q.id})">📄 Word</button>
             <button class="btn btn-danger" onclick="deleteQuote(${q.id})">✕</button>
           </div>
@@ -805,10 +806,14 @@ function saveGasto(){
 
   if(comprobanteBase64&&SCRIPT_URL){
     btn.innerHTML='⏳ Subiendo...';btn.disabled=true;
+    // Obtener nombre del proyecto para organizar en Drive
+    const qid2=document.getElementById('g-quote').value;
+    const qProj=qid2?db.quotes.find(q=>q.id==Number(qid2)):null;
+    const projectName=qProj?qProj.cliente+' — '+qProj.desc:'General';
     fetch(SCRIPT_URL,{
       method:'POST',
       headers:{'Content-Type':'text/plain'},
-      body:JSON.stringify({action:'uploadImage',imageBase64:comprobanteBase64,mimeType:comprobanteMime,fileName:comprobanteNombre})
+      body:JSON.stringify({action:'uploadImage',imageBase64:comprobanteBase64,mimeType:comprobanteMime,fileName:comprobanteNombre,projectName:projectName})
     })
     .then(r=>r.json())
     .then(data=>{
