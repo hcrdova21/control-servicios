@@ -1047,7 +1047,7 @@ function renderGastos(){
   else{
     el.innerHTML=accepted.map(q=>{
       const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
-      const gastadoMat=db.gastos.filter(g=>g.quoteId==q.id).reduce((s,g)=>s+g.monto,0);
+      const gastadoMat=db.gastos.filter(g=>g.quoteId==q.id&&g.tipo!=='mano de obra').reduce((s,g)=>s+g.monto,0);
       const gastadoAyud=db.asistencias.filter(a=>a.quoteId==q.id).reduce((s,att)=>s+att.registros.filter(r=>r.asistio).reduce((ss,r)=>ss+r.jornal,0),0);
       const gastadoTotal=gastadoMat+gastadoAyud;
       const utilidad=cobrado-gastadoTotal;
@@ -1524,7 +1524,7 @@ function renderDashboard(){
   const totalCotizado=db.quotes.filter(q=>q.status==='accepted').reduce((s,q)=>s+q.total,0);
   const totalCobrado=db.pagos.reduce((s,p)=>s+p.monto,0);
   const totalPendiente=totalCotizado-totalCobrado;
-  const totalGastosServicio=db.gastos.reduce((s,g)=>s+g.monto,0);
+  const totalGastosServicio=db.gastos.filter(g=>g.tipo!=='mano de obra').reduce((s,g)=>s+g.monto,0);
   const totalAyudantes=db.asistencias.reduce((s,att)=>s+att.registros.filter(r=>r.asistio).reduce((ss,r)=>ss+r.jornal,0),0);
   const totalGastos=totalGastosServicio+totalAyudantes;
   const balance=totalCobrado-totalGastos;
@@ -2080,7 +2080,8 @@ function verDetalleProyecto(qid){
   if(!q)return;
 
   const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
-  const gastosMat=db.gastos.filter(g=>g.quoteId==q.id);
+  // Excluir gastos de mano de obra automáticos (ya se calculan desde asistencias)
+  const gastosMat=db.gastos.filter(g=>g.quoteId==q.id&&g.tipo!=='mano de obra');
   const totalMat=gastosMat.reduce((s,g)=>s+g.monto,0);
   const asistencias=db.asistencias.filter(a=>a.quoteId==q.id);
 
@@ -2120,7 +2121,7 @@ function verDetalleProyecto(qid){
       <span>💵 Pagos recibidos</span><span class="green">${fmt(cobrado)}</span>
     </div>
     ${pagosRecibidos.length?`<table style="width:100%"><thead><tr><th>Fecha</th><th>Monto</th><th>Nota</th></tr></thead><tbody>
-      ${pagosRecibidos.map(p=>`<tr><td>${p.fecha||'—'}</td><td class="green" style="font-weight:600">${fmt(p.monto)}</td><td style="color:#888;font-size:12px">${p.nota||'—'}</td></tr>`).join('')}
+      ${pagosRecibidos.map(p=>`<tr><td>${fmtFechaCorta(cleanFecha(p.fecha))||'—'}</td><td class="green" style="font-weight:600">${fmt(p.monto)}</td><td style="color:#888;font-size:12px">${p.nota||'—'}</td></tr>`).join('')}
     </tbody></table>`:'<p style="font-size:12px;color:#bbb">Sin pagos registrados</p>'}
   </div>
 
