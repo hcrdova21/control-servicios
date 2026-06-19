@@ -324,7 +324,10 @@ tr:hover td{background:#fafafa}
     <button class="btn btn-success btn-block" id="btn-guardar-pago" onclick="savePago()">+ Registrar pago</button>
   </div>
   <div class="card">
-    <div class="card-title">📊 Estado de cobros (cotizaciones aceptadas)</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="card-title" style="margin:0">📊 Estado de cobros</div>
+      <button class="btn btn-sm" id="btn-toggle-completadas-cobros" onclick="toggleCompletadas('cobros')" style="font-size:12px">👁 Ver completadas</button>
+    </div>
     <div id="cobros-resumen"></div>
   </div>
   <div class="card">
@@ -338,7 +341,10 @@ tr:hover td{background:#fafafa}
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <div class="card-title" style="margin:0">🧾 Gastos por servicio</div>
-      <button class="btn btn-warning btn-sm" onclick="openGasto()">+ Registrar gasto</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" id="btn-toggle-completadas-gastos" onclick="toggleCompletadas('gastos')" style="font-size:12px">👁 Ver completadas</button>
+        <button class="btn btn-warning btn-sm" onclick="openGasto()">+ Registrar gasto</button>
+      </div>
     </div>
     <div id="gastos-rentabilidad"></div>
   </div>
@@ -456,6 +462,7 @@ let db={quotes:[],pagos:[],ayudantes:[],asistencias:[],gastos:[],eventos:[],empr
 }};
 let items=[];
 let editingQuoteId=null;
+let mostrarCompletadas=false;
 let syncing=false;
 
 function loadLocal(){try{const d=localStorage.getItem(STORAGE_KEY);if(d){const p=JSON.parse(d);db={...db,...p};if(!db.empresa)db.empresa={};}}catch(e){}}
@@ -735,7 +742,7 @@ function deleteQuote(id){
 // PAGOS
 function renderPagoSelect(){
   const sel=document.getElementById('p-quote');
-  const accepted=db.quotes.filter(q=>q.status==='accepted'||q.status==='completed');
+  const accepted=db.quotes.filter(q=>q.status==='accepted');
   sel.innerHTML='<option value="">Seleccionar cotización aceptada...</option>'+accepted.map(q=>{
     const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
     return`<option value="${q.id}">${q.cliente} — ${q.desc} (pendiente: ${fmt(q.total-cobrado)})</option>`;
@@ -795,8 +802,9 @@ function savePago(){
 }
 function renderCobrosResumen(){
   const el=document.getElementById('cobros-resumen');
-  const accepted=db.quotes.filter(q=>q.status==='accepted'||q.status==='completed');
-  if(!accepted.length){el.innerHTML='<div class="empty">Sin cotizaciones aceptadas</div>';return;}
+  const allAccepted=db.quotes.filter(q=>q.status==='accepted'||q.status==='completed');
+  const accepted=mostrarCompletadas?allAccepted:allAccepted.filter(q=>q.status!=='completed');
+  if(!accepted.length){el.innerHTML=`<div class="empty">${allAccepted.length>0&&!mostrarCompletadas?'Todas las cotizaciones están completadas. Usa 👁 Ver completadas para verlas.':'Sin cotizaciones aceptadas'}</div>`;return;}
   el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Cliente</th><th>Total</th><th>Cobrado</th><th>Pendiente</th><th>Estado</th></tr></thead><tbody>${
     accepted.map(q=>{
       const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
@@ -1286,7 +1294,7 @@ function renderDashboard(){
   }
 
   const dq=document.getElementById('dash-quotes');
-  const accepted=db.quotes.filter(q=>q.status==='accepted'||q.status==='completed').slice(-4).reverse();
+  const accepted=db.quotes.filter(q=>q.status==='accepted').slice(-4).reverse();
   if(!accepted.length)dq.innerHTML='<div class="empty">Sin cotizaciones aceptadas</div>';
   else dq.innerHTML=`<table><thead><tr><th>Cliente</th><th>Total</th><th>Cobrado</th></tr></thead><tbody>${
     accepted.map(q=>{const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
@@ -1482,6 +1490,18 @@ function cancelarEdicion(){
   const btn=document.querySelector('[onclick="saveQuote()"]');
   if(btn)btn.textContent='✓ Guardar cotización';
   renderItems();
+}
+
+// TOGGLE COMPLETADAS
+function toggleCompletadas(from){
+  mostrarCompletadas=!mostrarCompletadas;
+  const label=mostrarCompletadas?'🙈 Ocultar completadas':'👁 Ver completadas';
+  const btnCobros=document.getElementById('btn-toggle-completadas-cobros');
+  const btnGastos=document.getElementById('btn-toggle-completadas-gastos');
+  if(btnCobros)btnCobros.textContent=label;
+  if(btnGastos)btnGastos.textContent=label;
+  renderCobrosResumen();
+  renderGastos();
 }
 
 // DETALLE PROYECTO
