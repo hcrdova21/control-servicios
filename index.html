@@ -435,52 +435,63 @@ tr:hover td{background:#fafafa}
 <!-- ACTIVIDADES -->
 <div id="tab-actividades" class="section">
 
-  <!-- Modal nueva actividad -->
-  <div id="actividad-overlay" class="overlay" style="display:none">
-    <div class="modal" style="max-width:500px;width:100%">
+  <!-- Modal tarea -->
+  <div id="tarea-overlay" class="overlay" style="display:none">
+    <div class="modal" style="max-width:480px;width:100%">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <div class="modal-title" style="margin:0">📌 Registrar actividad</div>
-        <button class="btn btn-sm" onclick="closeActividad()">✕</button>
+        <div class="modal-title" style="margin:0" id="tarea-modal-title">➕ Nueva tarea</div>
+        <button class="btn btn-sm" onclick="closeTarea()">✕</button>
       </div>
       <div style="margin-bottom:10px">
         <label>Proyecto</label>
-        <select id="act-quote"><option value="">Seleccionar proyecto...</option></select>
+        <select id="tarea-quote"><option value="">Seleccionar...</option></select>
       </div>
       <div style="margin-bottom:10px">
-        <label>Fecha</label>
-        <input type="date" id="act-fecha">
+        <label>Descripción de la tarea</label>
+        <input type="text" id="tarea-desc" placeholder="Ej: Instalación de planchas drywall">
+      </div>
+      <div class="row">
+        <div><label>Fecha estimada</label><input type="date" id="tarea-fecha"></div>
+        <div><label>Orden / prioridad</label><input type="number" id="tarea-orden" min="1" placeholder="1" value="1"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-primary" style="flex:1;justify-content:center" onclick="saveTarea()">✓ Guardar tarea</button>
+        <button class="btn" onclick="closeTarea()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal evidencia -->
+  <div id="evidencia-overlay" class="overlay" style="display:none">
+    <div class="modal" style="max-width:480px;width:100%">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="modal-title" style="margin:0">📸 Registrar evidencia</div>
+        <button class="btn btn-sm" onclick="closeEvidencia()">✕</button>
       </div>
       <div style="margin-bottom:10px">
-        <label>Descripción de lo realizado</label>
-        <textarea id="act-desc" rows="3" placeholder="Ej: Se instalaron las planchas de drywall en pared norte..."></textarea>
-      </div>
-      <div style="margin-bottom:10px">
-        <label>Porcentaje de avance del trabajo (%)</label>
-        <div style="display:flex;align-items:center;gap:10px">
-          <input type="range" id="act-avance" min="0" max="100" value="0" oninput="document.getElementById('act-avance-val').textContent=this.value+'%'" style="flex:1">
-          <span id="act-avance-val" style="font-weight:700;color:#185FA5;min-width:40px">0%</span>
-        </div>
+        <label>Nota de lo realizado (opcional)</label>
+        <textarea id="ev-nota" rows="2" placeholder="Ej: Se completó la instalación del lado norte..."></textarea>
       </div>
       <div style="margin-bottom:10px">
         <label>Foto de evidencia (opcional)</label>
-        <input type="file" id="act-imagen" accept="image/*" onchange="previewActImagen(this)">
-        <div id="act-imagen-preview" style="margin-top:6px"></div>
+        <input type="file" id="ev-imagen" accept="image/*" onchange="previewEvImagen(this)">
+        <div id="ev-imagen-preview" style="margin-top:6px"></div>
       </div>
-      <div style="display:flex;gap:8px;margin-top:6px">
-        <button class="btn btn-primary" style="flex:1;justify-content:center" id="btn-guardar-actividad" onclick="saveActividad()">✓ Guardar actividad</button>
-        <button class="btn" onclick="closeActividad()">Cancelar</button>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-success" style="flex:1;justify-content:center" id="btn-completar-tarea" onclick="completarTarea()">✓ Marcar como completada</button>
+        <button class="btn" onclick="closeEvidencia()">Cancelar</button>
       </div>
     </div>
   </div>
 
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <div class="card-title" style="margin:0">📌 Actividades por proyecto</div>
-      <button class="btn btn-primary btn-sm" onclick="openActividad()">+ Nueva actividad</button>
+      <div class="card-title" style="margin:0">📌 Tareas por proyecto</div>
+      <button class="btn btn-primary btn-sm" onclick="openTarea()">+ Nueva tarea</button>
     </div>
     <div style="margin-bottom:12px">
-      <label>Filtrar por proyecto</label>
-      <select id="act-filter" onchange="renderActividades()" style="max-width:300px">
+      <label>Proyecto</label>
+      <select id="act-filter" onchange="renderActividades()" style="max-width:320px">
         <option value="">Todos los proyectos</option>
       </select>
     </div>
@@ -509,7 +520,7 @@ const STORAGE_KEY='servicios_v2';
 let SCRIPT_URL=localStorage.getItem('script_url')||'';
 let calMonth=new Date().getMonth(), calYear=new Date().getFullYear();
 let quoteFilter='all';
-let db={quotes:[],pagos:[],ayudantes:[],asistencias:[],gastos:[],eventos:[],actividades:[],empresa:{
+let db={quotes:[],pagos:[],ayudantes:[],asistencias:[],gastos:[],eventos:[],actividades:[],tareas:[],empresa:{
   nombre:'M&M Servicios y Mantenimientos Industriales S.A.C.',
   ruc:'20492370810',
   servicios:'Servicios Generales: Pintura, Soldadura, Construcción Civil y Metalmecánica',
@@ -533,7 +544,7 @@ async function syncToSheets(){
   if(!SCRIPT_URL||syncing)return;
   syncing=true;setSyncStatus('syncing','Sincronizando...');
   try{
-    const sheets=['quotes','pagos','ayudantes','asistencias','gastos','eventos','actividades'];
+    const sheets=['quotes','pagos','ayudantes','asistencias','gastos','eventos','actividades','tareas'];
     for(const s of sheets){
       const rows=serializeSheet(s);
       await fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify({sheet:s,rows})});
@@ -549,7 +560,7 @@ async function loadFromSheets(){
   if(!SCRIPT_URL)return;
   setSyncStatus('syncing','Cargando...');
   try{
-    const sheets=['quotes','pagos','ayudantes','asistencias','gastos','eventos','actividades'];
+    const sheets=['quotes','pagos','ayudantes','asistencias','gastos','eventos','actividades','tareas'];
     for(const s of sheets){
       const r=await fetch(SCRIPT_URL+'?sheet='+s);
       const data=await r.json();
@@ -578,6 +589,7 @@ function serializeSheet(s){
   if(s==='gastos')return db.gastos.map(g=>[g.id,g.quoteId||'',g.desc,g.monto,g.fecha,g.tipo,g.comprobanteUrl||'']);
   if(s==='eventos')return db.eventos.map(e=>[e.id,e.desc,e.fecha,e.tipo]);
   if(s==='actividades')return db.actividades.map(a=>[a.id,a.quoteId,a.fecha,a.desc,a.avance,a.imagenUrl||'']);
+  if(s==='tareas')return db.tareas.map(t=>[t.id,t.quoteId,t.desc,t.fecha||'',t.orden||1,t.completada?'1':'0',t.fechaCompletada||'',t.notaCompletada||'',t.imagenUrl||'']);
   return[];
 }
 function safeJSON(str, fallback){
@@ -620,6 +632,11 @@ function deserializeSheet(s,rows){
   if(s==='actividades')return rows.map(r=>({
     id:safeNum(r[0]),quoteId:safeNum(r[1]),fecha:safeStr(r[2]),
     desc:safeStr(r[3]),avance:safeNum(r[4]),imagenUrl:safeStr(r[5])
+  }));
+  if(s==='tareas')return rows.map(r=>({
+    id:safeNum(r[0]),quoteId:safeNum(r[1]),desc:safeStr(r[2]),
+    fecha:safeStr(r[3]),orden:safeNum(r[4]),completada:safeBool(r[5]),
+    fechaCompletada:safeStr(r[6]),notaCompletada:safeStr(r[7]),imagenUrl:safeStr(r[8])
   }));
   return[];
 }
@@ -738,7 +755,12 @@ function renderQuotesList(){
   const el=document.getElementById('quotes-list');
   if(!el)return;
   let qs=db.quotes.slice().reverse();
-  if(quoteFilter!=='all')qs=qs.filter(q=>q.status===quoteFilter);
+  if(quoteFilter==='all'){
+    // En "Todas" ocultar completadas por defecto
+    qs=qs.filter(q=>q.status!=='completed');
+  } else {
+    qs=qs.filter(q=>q.status===quoteFilter);
+  }
   if(!qs.length){el.innerHTML='<div class="empty">Sin cotizaciones</div>';return;}
   el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Cliente</th><th>Referencia</th><th>Fecha</th><th>Total</th><th>Estado</th><th>Cobrado</th><th>Acciones</th></tr></thead><tbody>${
     qs.map(q=>{
@@ -1228,8 +1250,14 @@ function renderCalendar(){
       eventDates[f].push('completed');
     });
   }
+  // Tareas por fecha estimada
+  (db.tareas||[]).filter(t=>t.fecha&&!t.completada).forEach(t=>{
+    const f=cleanFecha(t.fecha);if(!f)return;
+    if(!eventDates[f])eventDates[f]=[];
+    eventDates[f].push('tarea');
+  });
   // Colores por tipo
-  const tipoColor={entrega:'#dc2626',inicio:'#16a34a',reunion:'#185FA5','no-disp':'#888',completed:'#9ca3af'};
+  const tipoColor={entrega:'#dc2626',inicio:'#16a34a',reunion:'#185FA5','no-disp':'#888',completed:'#9ca3af',tarea:'#7c3aed'};
   let html='';
   for(let i=0;i<first;i++)html+=`<div class="cal-day empty-day"></div>`;
   for(let d=1;d<=days;d++){
@@ -1256,39 +1284,117 @@ function fmtFecha(f){
 
 function renderEventosList(){
   const el=document.getElementById('eventos-list');
-  const all=[...db.eventos];
-  db.quotes.filter(q=>(q.status==='accepted'||q.status==='completed')&&q.fechaEntrega).forEach(q=>{
-    if(q.status==='completed'&&!mostrarCompletadas)return;
-    all.push({id:'q-'+q.id,desc:q.cliente+' — '+q.desc,fecha:cleanFecha(q.fechaEntrega),tipo:q.status==='completed'?'completed':'entrega',fromQuote:true});
-  });
-  // Limpiar fechas de eventos manuales también
-  all.forEach(e=>e.fecha=cleanFecha(e.fecha));
-  // Deduplicar
-  const seenEv=new Set();
-  const allUniq=all.filter(e=>{const k=e.fecha+'|'+e.desc+'|'+e.tipo;if(seenEv.has(k))return false;seenEv.add(k);return true;});
-  allUniq.sort((a,b)=>a.fecha>b.fecha?1:-1);
-  if(!allUniq.length){el.innerHTML='<div class="empty">Sin eventos registrados</div>';return;}
-  const tipoIcon={entrega:'🏁',inicio:'🚀',reunion:'🤝','no-disp':'🚫'};
-  const tipoLabel={entrega:'Entrega',inicio:'Inicio',reunion:'Reunión','no-disp':'No disponible'};
   const soon=(new Date(Date.now()+7*86400000)).toISOString().split('T')[0];
-  el.innerHTML=allUniq.map(e=>{
-    const isPast=e.fecha<today;
-    const isSoon=!isPast&&e.fecha<=soon;
-    const icon=tipoIcon[e.tipo]||'📌';
-    const label=tipoLabel[e.tipo]||e.tipo;
-    return`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f0f0ec;${isPast?'opacity:0.45':''}">
-      <div style="text-align:center;min-width:52px;background:${isSoon?'#fef9c3':isPast?'#f9f9f7':'#f0f5ff'};border-radius:8px;padding:6px 4px">
-        <div style="font-size:18px;line-height:1">${icon}</div>
-        <div style="font-size:10px;font-weight:700;color:${isSoon?'#854d0e':isPast?'#aaa':'#185FA5'};margin-top:2px">${fmtFecha(e.fecha).split(' ').slice(0,2).join(' ')}</div>
-        <div style="font-size:10px;color:#888">${fmtFecha(e.fecha).split(' ')[2]}</div>
-      </div>
-      <div style="flex:1">
-        <div style="font-size:13px;font-weight:600">${e.desc}</div>
-        <div style="font-size:11px;color:#888;margin-top:2px">${label}${isSoon?' · <span style="color:#d97706;font-weight:600">⚡ Esta semana</span>':''}</div>
-      </div>
-      ${e.fromQuote?'':`<button class="btn btn-danger" onclick="deleteEvento(${e.id})">✕</button>`}
-    </div>`;
-  }).join('');
+  const tipoIcon={reunion:'🤝','no-disp':'🚫'};
+  const tipoLabel={reunion:'Reunión','no-disp':'No disponible'};
+
+  // ── PROYECTOS (cotizaciones con rango de fechas) ──
+  const proyectos=db.quotes.filter(q=>{
+    if(q.status==='accepted') return true;
+    if(q.status==='completed') return mostrarCompletadas;
+    return false;
+  }).map(q=>({
+    id:'q-'+q.id,
+    desc:q.cliente+' — '+q.desc,
+    fechaIni:cleanFecha(q.fecha),
+    fechaFin:cleanFecha(q.fechaEntrega),
+    status:q.status,
+    fromQuote:true
+  })).filter(p=>p.fechaIni||p.fechaFin)
+    .sort((a,b)=>(a.fechaIni||a.fechaFin)>(b.fechaIni||b.fechaFin)?1:-1);
+
+  // ── TAREAS PENDIENTES ──
+  const tareasAgenda=(db.tareas||[]).filter(t=>t.fecha&&!t.completada).map(t=>{
+    const q=db.quotes.find(q=>q.id==t.quoteId);
+    return{...t,fecha:cleanFecha(t.fecha),proyDesc:q?q.cliente+' — '+q.desc:'Proyecto'};
+  }).sort((a,b)=>a.fecha>b.fecha?1:-1);
+
+  // ── EVENTOS MANUALES ──
+  const manuales=db.eventos.map(e=>({...e,fecha:cleanFecha(e.fecha)}))
+    .sort((a,b)=>a.fecha>b.fecha?1:-1);
+
+  if(!proyectos.length&&!manuales.length){
+    el.innerHTML='<div class="empty">Sin eventos registrados</div>';return;
+  }
+
+  let html='';
+
+  // Proyectos
+  if(proyectos.length){
+    html+=`<div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Proyectos</div>`;
+    html+=proyectos.map(p=>{
+      const isPast=p.fechaFin&&p.fechaFin<today;
+      const isCompleted=p.status==='completed';
+      const isSoon=!isPast&&p.fechaFin&&p.fechaFin<=soon;
+      const ini=p.fechaIni?fmtFechaCorta(p.fechaIni):'—';
+      const fin=p.fechaFin?fmtFechaCorta(p.fechaFin):'—';
+      const color=isCompleted?'#9ca3af':isSoon?'#d97706':'#185FA5';
+      const icon=isCompleted?'✅':isSoon?'⚡':'🔵';
+      return`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f0f0ec;${isPast&&!isCompleted?'opacity:0.5':''}">
+        <div style="text-align:center;min-width:52px;background:${isCompleted?'#f3f4f6':isSoon?'#fef9c3':'#f0f5ff'};border-radius:8px;padding:6px 4px;flex-shrink:0">
+          <div style="font-size:18px;line-height:1">${icon}</div>
+          <div style="font-size:9px;font-weight:700;color:${color};margin-top:2px">PROYECTO</div>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${p.desc}</div>
+          <div style="font-size:12px;color:#888">
+            🗓 ${ini} → ${fin}
+            ${isSoon?'<span style="color:#d97706;font-weight:600;margin-left:6px">⚡ Esta semana</span>':''}
+            ${isCompleted?'<span style="color:#9ca3af;margin-left:6px">Completada</span>':''}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Tareas
+  if(tareasAgenda.length){
+    html+=`<div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.05em;margin:16px 0 8px">Tareas programadas</div>`;
+    html+=tareasAgenda.map(t=>{
+      const isPast=t.fecha<today;
+      const isSoon=!isPast&&t.fecha<=soon;
+      return`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f0f0ec;${isPast?'opacity:0.6':''}">
+        <div style="text-align:center;min-width:52px;background:${isSoon?'#faf5ff':'#f5f3ff'};border-radius:8px;padding:6px 4px;flex-shrink:0">
+          <div style="font-size:18px;line-height:1">🔷</div>
+          <div style="font-size:10px;font-weight:700;color:#7c3aed;margin-top:2px">${fmtFechaCorta(t.fecha).split(' ').slice(0,2).join(' ')}</div>
+          <div style="font-size:10px;color:#888">${fmtFechaCorta(t.fecha).split(' ')[2]}</div>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600">${t.desc}</div>
+          <div style="font-size:11px;color:#888;margin-top:2px">
+            ${t.proyDesc}
+            ${isSoon?'<span style="color:#d97706;font-weight:600;margin-left:6px">⚡ Esta semana</span>':''}
+            ${isPast?'<span style="color:#ef4444;margin-left:6px">⚠ Vencida</span>':''}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Eventos manuales
+  if(manuales.length){
+    html+=`<div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.05em;margin:16px 0 8px">Otros compromisos</div>`;
+    html+=manuales.map(e=>{
+      const isPast=e.fecha<today;
+      const isSoon=!isPast&&e.fecha<=soon;
+      const icon=tipoIcon[e.tipo]||'📌';
+      const label=tipoLabel[e.tipo]||e.tipo;
+      return`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f0f0ec;${isPast?'opacity:0.45':''}">
+        <div style="text-align:center;min-width:52px;background:${isSoon?'#fef9c3':isPast?'#f9f9f7':'#f0f5ff'};border-radius:8px;padding:6px 4px;flex-shrink:0">
+          <div style="font-size:18px;line-height:1">${icon}</div>
+          <div style="font-size:10px;font-weight:700;color:${isSoon?'#854d0e':isPast?'#aaa':'#185FA5'};margin-top:2px">${fmtFechaCorta(e.fecha).split(' ').slice(0,2).join(' ')}</div>
+          <div style="font-size:10px;color:#888">${fmtFechaCorta(e.fecha).split(' ')[2]}</div>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600">${e.desc}</div>
+          <div style="font-size:11px;color:#888;margin-top:2px">${label}${isSoon?' · <span style="color:#d97706;font-weight:600">⚡ Esta semana</span>':''}</div>
+        </div>
+        <button class="btn btn-danger" onclick="deleteEvento(${e.id})">✕</button>
+      </div>`;
+    }).join('');
+  }
+
+  el.innerHTML=html;
 }
 
 // DASHBOARD
@@ -1326,7 +1432,11 @@ function renderDashboard(){
   const proximos=[
     ...db.eventos.map(e=>({...e,fecha:cleanFecha(e.fecha)})),
     ...db.quotes.filter(q=>q.status==='accepted'&&q.fechaEntrega).map(q=>({desc:'Entrega: '+q.cliente,fecha:cleanFecha(q.fechaEntrega)})),
-    ...db.quotes.filter(q=>q.status==='accepted'&&q.fecha).map(q=>({desc:'Inicio: '+q.cliente,fecha:cleanFecha(q.fecha)}))
+    ...db.quotes.filter(q=>q.status==='accepted'&&q.fecha).map(q=>({desc:'Inicio: '+q.cliente,fecha:cleanFecha(q.fecha)})),
+    ...(db.tareas||[]).filter(t=>t.fecha&&!t.completada).map(t=>{
+      const q=db.quotes.find(q=>q.id==t.quoteId);
+      return{desc:'Tarea: '+t.desc+(q?' ('+q.cliente+')':''),fecha:cleanFecha(t.fecha)};
+    })
   ].filter(e=>e.fecha>=today&&e.fecha<=en7);
   const alertasEl=document.getElementById('alertas-box');
   if(proximos.length){
@@ -1569,71 +1679,158 @@ function cancelarEdicion(){
   renderItems();
 }
 
-// ACTIVIDADES
+// TAREAS POR PROYECTO
+let tareaEditId=null;
+let tareaCompletarId=null;
+let evImagenBase64=null, evImagenMime=null, evImagenNombre=null;
 let actImagenBase64=null, actImagenMime=null, actImagenNombre=null;
 
-function openActividad(){
-  const sel=document.getElementById('act-quote');
-  sel.innerHTML='<option value="">Seleccionar proyecto...</option>'+
+function openTarea(quoteId, editId){
+  tareaEditId=editId||null;
+  const sel=document.getElementById('tarea-quote');
+  sel.innerHTML='<option value="">Seleccionar...</option>'+
     db.quotes.filter(q=>q.status==='accepted').map(q=>`<option value="${q.id}">${q.cliente} — ${q.desc}</option>`).join('');
-  document.getElementById('act-fecha').value=today;
-  document.getElementById('act-avance').value=0;
-  document.getElementById('act-avance-val').textContent='0%';
-  document.getElementById('act-desc').value='';
-  document.getElementById('act-imagen-preview').innerHTML='';
-  actImagenBase64=null;actImagenMime=null;actImagenNombre=null;
-  document.getElementById('actividad-overlay').style.display='flex';
+
+  document.getElementById('tarea-modal-title').textContent=editId?'✏️ Editar tarea':'➕ Nueva tarea';
+  document.getElementById('tarea-fecha').value=today;
+  document.getElementById('tarea-desc').value='';
+  document.getElementById('tarea-orden').value=1;
+
+  if(quoteId) sel.value=quoteId;
+
+  if(editId){
+    const t=db.tareas.find(t=>t.id==editId);
+    if(t){
+      sel.value=t.quoteId;
+      document.getElementById('tarea-desc').value=t.desc;
+      document.getElementById('tarea-fecha').value=t.fecha||'';
+      document.getElementById('tarea-orden').value=t.orden||1;
+    }
+  } else {
+    // Calcular orden siguiente para el proyecto
+    if(quoteId){
+      const max=db.tareas.filter(t=>t.quoteId==quoteId).reduce((m,t)=>Math.max(m,t.orden||0),0);
+      document.getElementById('tarea-orden').value=max+1;
+    }
+  }
+  document.getElementById('tarea-overlay').style.display='flex';
 }
 
-function closeActividad(){
-  document.getElementById('actividad-overlay').style.display='none';
+function closeTarea(){ document.getElementById('tarea-overlay').style.display='none'; tareaEditId=null; }
+
+function saveTarea(){
+  const qid=parseInt(document.getElementById('tarea-quote').value);
+  const desc=document.getElementById('tarea-desc').value.trim();
+  const fecha=document.getElementById('tarea-fecha').value;
+  const orden=parseInt(document.getElementById('tarea-orden').value)||1;
+  if(!qid||!desc){customAlert('Completa el proyecto y la descripción.');return;}
+
+  if(tareaEditId){
+    const t=db.tareas.find(t=>t.id==tareaEditId);
+    if(t){t.desc=desc;t.fecha=fecha;t.orden=orden;t.quoteId=qid;}
+    saveAndSync();closeTarea();renderActividades();
+    customAlert('✓ Tarea actualizada.');
+    return;
+  }
+
+  db.tareas.push({id:Date.now(),quoteId:qid,desc,fecha,orden,completada:false,notaCompletada:'',imagenUrl:''});
+  saveAndSync();closeTarea();renderActividades();
+  customAlert('✓ Tarea agregada.');
 }
 
-function previewActImagen(input){
-  const file=input.files[0]; if(!file)return;
-  actImagenMime=file.type; actImagenNombre=file.name;
+function deleteTarea(id){
+  customConfirm('¿Eliminar esta tarea?',r=>{
+    if(!r)return;
+    db.tareas=db.tareas.filter(t=>t.id!=id);
+    saveAndSync();renderActividades();
+  });
+}
+
+function abrirEvidencia(id){
+  tareaCompletarId=id;
+  evImagenBase64=null;evImagenMime=null;evImagenNombre=null;
+  document.getElementById('ev-nota').value='';
+  document.getElementById('ev-imagen-preview').innerHTML='';
+  document.getElementById('evidencia-overlay').style.display='flex';
+}
+
+function closeEvidencia(){ document.getElementById('evidencia-overlay').style.display='none'; tareaCompletarId=null; }
+
+function previewEvImagen(input){
+  const file=input.files[0];if(!file)return;
+  evImagenMime=file.type;evImagenNombre=file.name;
   const reader=new FileReader();
   reader.onload=e=>{
-    actImagenBase64=e.target.result.split(',')[1];
-    document.getElementById('act-imagen-preview').innerHTML=
-      `<img src="${e.target.result}" style="max-height:100px;max-width:100%;border-radius:8px;border:1px solid #eee">`;
+    evImagenBase64=e.target.result.split(',')[1];
+    document.getElementById('ev-imagen-preview').innerHTML=
+      `<img src="${e.target.result}" style="max-height:80px;max-width:100%;border-radius:8px;border:1px solid #eee">`;
   };
   reader.readAsDataURL(file);
 }
 
-function saveActividad(){
-  const qid=parseInt(document.getElementById('act-quote').value);
-  const fecha=document.getElementById('act-fecha').value;
-  const desc=document.getElementById('act-desc').value.trim();
-  const avance=parseInt(document.getElementById('act-avance').value)||0;
-  if(!qid||!fecha||!desc){customAlert('Completa proyecto, fecha y descripción.');return;}
-  const btn=document.getElementById('btn-guardar-actividad');
-  const actividad={id:Date.now(),quoteId:qid,fecha,desc,avance,imagenUrl:''};
+function previewActImagen(input){
+  const file=input.files[0];if(!file)return;
+  actImagenMime=file.type;actImagenNombre=file.name;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    actImagenBase64=e.target.result.split(',')[1];
+  };
+  reader.readAsDataURL(file);
+}
 
-  function finalizarActividad(){
-    db.actividades.push(actividad);
+function completarTarea(){
+  if(!tareaCompletarId)return;
+  const t=db.tareas.find(t=>t.id==tareaCompletarId);
+  if(!t)return;
+  const btn=document.getElementById('btn-completar-tarea');
+  const nota=document.getElementById('ev-nota').value.trim();
+
+  function finalizarCompletar(imgUrl){
+    t.completada=true;
+    t.fechaCompletada=today;
+    t.notaCompletada=nota;
+    t.imagenUrl=imgUrl||'';
     saveAndSync();
-    closeActividad();
+    closeEvidencia();
     renderActividades();
-    if(btn){btn.innerHTML='✓ Guardar actividad';btn.disabled=false;}
-    customAlert('✓ Actividad registrada.');
+    if(btn){btn.innerHTML='✓ Marcar como completada';btn.disabled=false;}
+
+    // Verificar si la fecha estimada se extendió
+    const q=db.quotes.find(q=>q.id==t.quoteId);
+    if(q&&t.fecha&&t.fecha>cleanFecha(q.fechaEntrega||'')){
+      customConfirm(`La tarea "${t.desc}" tiene fecha estimada ${fmtFechaCorta(t.fecha)}, que es posterior a la entrega del proyecto (${fmtFechaCorta(cleanFecha(q.fechaEntrega))}). ¿Deseas actualizar la fecha de entrega del proyecto?`,r=>{
+        if(!r)return;
+        q.fechaEntrega=t.fecha;
+        // Actualizar evento en agenda
+        db.eventos=db.eventos.filter(e=>e.quoteId!=q.id||e.tipo!=='entrega');
+        db.eventos.push({id:Date.now(),desc:'Entrega: '+q.cliente+' — '+q.desc,fecha:t.fecha,tipo:'entrega',quoteId:q.id});
+        saveAndSync();
+        customAlert('✓ Fecha de entrega actualizada a '+fmtFechaCorta(t.fecha));
+      });
+    }
+    customAlert('✓ Tarea completada.');
   }
 
-  if(actImagenBase64&&SCRIPT_URL){
+  if(evImagenBase64&&SCRIPT_URL){
     if(btn){btn.innerHTML='⏳ Subiendo...';btn.disabled=true;}
-    const q=db.quotes.find(q=>q.id==qid);
+    const q=db.quotes.find(q=>q.id==t.quoteId);
     const projectName=q?q.cliente+' — '+q.desc:'General';
-    fetch(SCRIPT_URL,{
-      method:'POST',headers:{'Content-Type':'text/plain'},
-      body:JSON.stringify({action:'uploadImage',imageBase64:actImagenBase64,
-        mimeType:actImagenMime,fileName:actImagenNombre,projectName:projectName})
-    })
-    .then(r=>r.json())
-    .then(data=>{if(data.ok)actividad.imagenUrl=data.url;finalizarActividad();})
-    .catch(()=>finalizarActividad());
+    fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'uploadImage',imageBase64:evImagenBase64,mimeType:evImagenMime,fileName:evImagenNombre,projectName})
+    }).then(r=>r.json()).then(data=>finalizarCompletar(data.ok?data.url:''))
+      .catch(()=>finalizarCompletar(''));
   } else {
-    finalizarActividad();
+    finalizarCompletar('');
   }
+}
+
+function reabrirTarea(id){
+  customConfirm('¿Marcar esta tarea como pendiente nuevamente?',r=>{
+    if(!r)return;
+    const t=db.tareas.find(t=>t.id==id);
+    if(t){t.completada=false;t.fechaCompletada='';t.notaCompletada='';t.imagenUrl='';}
+    saveAndSync();renderActividades();
+  });
 }
 
 function renderActividadesFilter(){
@@ -1645,59 +1842,60 @@ function renderActividadesFilter(){
     ).join('');
 }
 
-function deleteActividad(id){
-  customConfirm('¿Eliminar esta actividad?',r=>{
-    if(!r)return;
-    db.actividades=db.actividades.filter(a=>a.id!=id);
-    saveAndSync();renderActividades();
-  });
-}
-
 function renderActividades(){
   const el=document.getElementById('actividades-list');
   const filterQid=document.getElementById('act-filter').value;
-  let acts=db.actividades.slice().sort((a,b)=>b.fecha>a.fecha?1:-1);
-  if(filterQid)acts=acts.filter(a=>a.quoteId==filterQid);
 
-  if(!acts.length){
-    el.innerHTML='<div class="empty">Sin actividades registradas</div>';
-    return;
-  }
+  const quotes=db.quotes.filter(q=>q.status==='accepted'||q.status==='completed');
+  const filtered=filterQid?quotes.filter(q=>q.id==filterQid):quotes;
 
-  // Agrupar por proyecto
-  const byProject={};
-  acts.forEach(a=>{
-    const q=db.quotes.find(q=>q.id==a.quoteId);
-    const key=a.quoteId;
-    if(!byProject[key])byProject[key]={q,acts:[]};
-    byProject[key].acts.push(a);
-  });
+  if(!filtered.length){el.innerHTML='<div class="empty">Sin proyectos activos</div>';return;}
 
-  el.innerHTML=Object.values(byProject).map(({q,acts})=>{
-    const lastAvance=acts[0]?.avance||0;
-    const proyLabel=q?q.cliente+' — '+q.desc:'Proyecto desconocido';
-    return`<div style="margin-bottom:20px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <strong style="font-size:14px">${proyLabel}</strong>
-        <span style="font-size:13px;font-weight:700;color:#185FA5">${lastAvance}% avance</span>
+  el.innerHTML=filtered.map(q=>{
+    const tareas=(db.tareas||[]).filter(t=>t.quoteId==q.id).sort((a,b)=>(a.orden||0)-(b.orden||0));
+    const total=tareas.length;
+    const completadas=tareas.filter(t=>t.completada).length;
+    const pct=total>0?Math.round(completadas/total*100):0;
+    const color=pct>=100?'#16a34a':pct>=50?'#185FA5':'#d97706';
+
+    return`<div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid #eee">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <strong style="font-size:14px">${q.cliente} — ${q.desc}</strong>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:13px;font-weight:700;color:${color}">${pct}%</span>
+          <button class="btn btn-sm" style="font-size:11px" onclick="openTarea(${q.id})">+ Tarea</button>
+        </div>
       </div>
-      <div class="progress-bar" style="height:8px;margin-bottom:12px">
-        <div class="progress-fill" style="width:${lastAvance}%;background:${lastAvance>=100?'#16a34a':lastAvance>=50?'#185FA5':'#d97706'}"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <div class="progress-bar" style="flex:1;height:8px">
+          <div class="progress-fill" style="width:${pct}%;background:${color}"></div>
+        </div>
+        <span style="font-size:12px;color:#888;white-space:nowrap">${completadas}/${total} tareas</span>
       </div>
-      ${acts.map(a=>`
-        <div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #f0f0ec;align-items:flex-start">
-          ${a.imagenUrl?`<a href="${a.imagenUrl}" target="_blank">
-            <img src="${a.imagenUrl}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid #eee;flex-shrink:0" onerror="this.style.display='none'">
-          </a>`:'<div style="width:64px;height:64px;background:#f5f5f0;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:20px;flex-shrink:0">📷</div>'}
+      ${total===0?`<div style="text-align:center;padding:12px;color:#bbb;font-size:13px">Sin tareas. Haz clic en "+ Tarea" para agregar.</div>`:''}
+      ${tareas.map(t=>`
+        <div style="display:flex;gap:10px;align-items:flex-start;padding:8px 10px;margin-bottom:6px;background:${t.completada?'#f0fdf4':'#f9f9f7'};border-radius:10px;border:1px solid ${t.completada?'#bbf7d0':'#e5e5e0'}">
+          <div style="padding-top:2px;flex-shrink:0">
+            ${t.completada
+              ?`<button onclick="reabrirTarea(${t.id})" title="Marcar como pendiente" style="background:none;border:none;cursor:pointer;font-size:20px">✅</button>`
+              :`<button onclick="abrirEvidencia(${t.id})" title="Marcar como completada" style="background:none;border:none;cursor:pointer;font-size:20px">⬜</button>`
+            }
+          </div>
           <div style="flex:1">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-              <span style="font-size:12px;color:#888">${fmtFechaCorta(a.fecha)}</span>
-              <div style="display:flex;align-items:center;gap:8px">
-                <span style="font-size:12px;font-weight:600;color:#185FA5">${a.avance}%</span>
-                <button class="btn btn-danger" onclick="deleteActividad(${a.id})">✕</button>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <span style="font-size:13px;font-weight:600;${t.completada?'text-decoration:line-through;color:#888':''}">${t.desc}</span>
+              <div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">
+                ${!t.completada?`<button class="btn btn-sm" style="font-size:11px;padding:3px 7px" onclick="openTarea(${q.id},${t.id})">✏️</button>`:''}
+                <button class="btn btn-danger" onclick="deleteTarea(${t.id})">✕</button>
               </div>
             </div>
-            <p style="font-size:13px;color:#333;line-height:1.5;margin:0">${a.desc}</p>
+            <div style="font-size:11px;color:#888;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">
+              ${t.fecha?`<span>📅 ${fmtFechaCorta(t.fecha)}</span>`:''}
+              <span>🔢 Orden ${t.orden||1}</span>
+              ${t.completada&&t.fechaCompletada?`<span style="color:#16a34a">✓ Completada ${fmtFechaCorta(t.fechaCompletada)}</span>`:''}
+            </div>
+            ${t.notaCompletada?`<div style="font-size:12px;color:#555;margin-top:4px;font-style:italic">"${t.notaCompletada}"</div>`:''}
+            ${t.imagenUrl?`<a href="${t.imagenUrl}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#185FA5;margin-top:4px;text-decoration:none">📎 Ver evidencia</a>`:''}
           </div>
         </div>`).join('')}
     </div>`;
