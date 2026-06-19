@@ -1205,6 +1205,27 @@ function saveAsistencia(){
     alert('✓ Asistencia registrada para '+dates.length+' días ('+ini+' al '+fin+').');
   }
 }
+function anularPagoAsistencia(id){
+  const att=db.asistencias.find(a=>a.id==id);
+  if(!att)return;
+  customConfirm('¿Anular el pago de este registro? Se eliminará el gasto de mano de obra asociado.',r=>{
+    if(!r)return;
+    // Eliminar gasto de mano de obra asociado
+    const pres=att.registros.filter(r=>r.asistio);
+    const nombres=pres.map(r=>r.nombre).join(', ');
+    const descBuscada='Pago ayudantes: '+nombres;
+    const fechaBuscada=cleanFecha(att.fecha);
+    db.gastos=db.gastos.filter(g=>!(
+      g.desc===descBuscada&&
+      cleanFecha(g.fecha)===fechaBuscada&&
+      g.quoteId==att.quoteId
+    ));
+    att.pagado=false;
+    saveAndSync();renderAsistenciasHist();renderDashboard();
+    customAlert('✓ Pago anulado. El registro de asistencia queda activo como pendiente.');
+  });
+}
+
 function marcarPagado(id){
   const att=db.asistencias.find(a=>a.id==id);
   if(!att)return;
@@ -1283,27 +1304,58 @@ function renderAsistenciasHist(){
 }
 function deleteAsistencia(id){
   const att=db.asistencias.find(a=>a.id==id);
-  const msg=att&&att.pagado
-    ?'¿Eliminar este registro? También se eliminará el gasto asociado en la hoja de Gastos.'
-    :'¿Eliminar este registro de asistencia?';
-  customConfirm(msg,r=>{
-    if(!r)return;
-    // Si estaba pagado, eliminar el gasto generado automáticamente
-    if(att&&att.pagado){
+  if(!att)return;
+
+  if(att.pagado){
+    // Mostrar modal con dos opciones
+    document.getElementById('custom-modal-msg').textContent='Este registro ya fue pagado. ¿Qué deseas hacer?';
+    document.getElementById('custom-modal-btns').innerHTML=`
+      <button class="btn btn-danger" style="min-width:120px" id="cm-eliminar-todo">🗑 Eliminar todo</button>
+      <button class="btn btn-warning" style="min-width:120px;background:#fef9c3;color:#854d0e;border-color:#fcd34d" id="cm-solo-anular">↩ Solo anular pago</button>
+      <button class="btn" id="cm-cancelar-del">Cancelar</button>`;
+    document.getElementById('custom-modal').style.display='flex';
+
+    document.getElementById('cm-eliminar-todo').onclick=()=>{
+      document.getElementById('custom-modal').style.display='none';
+      // Eliminar gasto asociado + asistencia
       const pres=att.registros.filter(r=>r.asistio);
       const nombres=pres.map(r=>r.nombre).join(', ');
-      const descBuscada='Pago ayudantes: '+nombres;
-      const fechaBuscada=cleanFecha(att.fecha);
-      // Eliminar el gasto que coincida con fecha, descripción y quoteId
       db.gastos=db.gastos.filter(g=>!(
-        g.desc===descBuscada&&
-        cleanFecha(g.fecha)===fechaBuscada&&
+        g.desc==='Pago ayudantes: '+nombres&&
+        cleanFecha(g.fecha)===cleanFecha(att.fecha)&&
         g.quoteId==att.quoteId
       ));
-    }
-    db.asistencias=db.asistencias.filter(a=>a.id!=id);
-    saveAndSync();renderAsistenciasHist();renderDashboard();
-  });
+      db.asistencias=db.asistencias.filter(a=>a.id!=id);
+      saveAndSync();renderAsistenciasHist();renderDashboard();
+      customAlert('✓ Registro y gasto eliminados.');
+    };
+
+    document.getElementById('cm-solo-anular').onclick=()=>{
+      document.getElementById('custom-modal').style.display='none';
+      // Solo anular pago: eliminar gasto y marcar como pendiente
+      const pres=att.registros.filter(r=>r.asistio);
+      const nombres=pres.map(r=>r.nombre).join(', ');
+      db.gastos=db.gastos.filter(g=>!(
+        g.desc==='Pago ayudantes: '+nombres&&
+        cleanFecha(g.fecha)===cleanFecha(att.fecha)&&
+        g.quoteId==att.quoteId
+      ));
+      att.pagado=false;
+      saveAndSync();renderAsistenciasHist();renderDashboard();
+      customAlert('✓ Pago anulado. Asistencia queda como pendiente.');
+    };
+
+    document.getElementById('cm-cancelar-del').onclick=()=>{
+      document.getElementById('custom-modal').style.display='none';
+    };
+
+  } else {
+    customConfirm('¿Eliminar este registro de asistencia?',r=>{
+      if(!r)return;
+      db.asistencias=db.asistencias.filter(a=>a.id!=id);
+      saveAndSync();renderAsistenciasHist();renderDashboard();
+    });
+  }
 }
 
 // AGENDA
@@ -2074,6 +2126,24 @@ function toggleCompletadas(from){
 function toggleCompletadasAgenda(){ toggleCompletadas('agenda'); }
 function toggleCompletadasActividades(){ toggleCompletadas('actividades'); }
 
+// ANULAR PAGO
+function anularPago(pid){
+  customConfirm('¿Anular este pago? Se eliminará del historial de cobros.',r=>{
+    if(!r)return;
+    db.pagos=db.pagos.filter(p=>p.id!=pid);
+    saveAndSync();
+    // Refrescar detalle si está abierto
+    const overlay=document.getElementById('detalle-overlay');
+    if(overlay&&overlay.style.display!=='none'){
+      const title=document.getElementById('detalle-title').textContent;
+      const q=db.quotes.find(q=>'📊 '+q.cliente+' — '+q.desc===title);
+      if(q)verDetalleProyecto(q.id);
+    }
+    renderCobrosResumen();renderPagosList();renderDashboard();
+    customAlert('✓ Pago anulado correctamente.');
+  });
+}
+
 // DETALLE PROYECTO
 function verDetalleProyecto(qid){
   const q=db.quotes.find(q=>q.id===qid);
@@ -2092,7 +2162,7 @@ function verDetalleProyecto(qid){
       if(!pagosAyud[r.nombre])pagosAyud[r.nombre]={dias:0,total:0,detalle:[]};
       pagosAyud[r.nombre].dias++;
       pagosAyud[r.nombre].total+=r.jornal;
-      pagosAyud[r.nombre].detalle.push({fecha:att.fecha,jornal:r.jornal});
+      pagosAyud[r.nombre].detalle.push({fecha:cleanFecha(att.fecha),jornal:r.jornal});
     });
   });
   const totalAyud=Object.values(pagosAyud).reduce((s,a)=>s+a.total,0);
@@ -2120,8 +2190,13 @@ function verDetalleProyecto(qid){
     <div style="font-size:13px;font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between">
       <span>💵 Pagos recibidos</span><span class="green">${fmt(cobrado)}</span>
     </div>
-    ${pagosRecibidos.length?`<table style="width:100%"><thead><tr><th>Fecha</th><th>Monto</th><th>Nota</th></tr></thead><tbody>
-      ${pagosRecibidos.map(p=>`<tr><td>${fmtFechaCorta(cleanFecha(p.fecha))||'—'}</td><td class="green" style="font-weight:600">${fmt(p.monto)}</td><td style="color:#888;font-size:12px">${p.nota||'—'}</td></tr>`).join('')}
+    ${pagosRecibidos.length?`<table style="width:100%"><thead><tr><th>Fecha</th><th>Monto</th><th>Nota</th><th></th></tr></thead><tbody>
+      ${pagosRecibidos.map(p=>`<tr>
+        <td>${fmtFechaCorta(cleanFecha(p.fecha))||'—'}</td>
+        <td class="green" style="font-weight:600">${fmt(p.monto)}</td>
+        <td style="color:#888;font-size:12px">${p.nota||'—'}</td>
+        <td><button class="btn btn-danger" onclick="anularPago(${p.id})" title="Anular pago">✕</button></td>
+      </tr>`).join('')}
     </tbody></table>`:'<p style="font-size:12px;color:#bbb">Sin pagos registrados</p>'}
   </div>
 
