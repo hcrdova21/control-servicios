@@ -541,7 +541,20 @@ let editingQuoteId=null;
 let mostrarCompletadas=false;
 let syncing=false;
 
-function loadLocal(){try{const d=localStorage.getItem(STORAGE_KEY);if(d){const p=JSON.parse(d);db={...db,...p};if(!db.empresa)db.empresa={};}}catch(e){}}
+function loadLocal(){
+  try{
+    const d=localStorage.getItem(STORAGE_KEY);
+    if(d){
+      const p=JSON.parse(d);
+      db={...db,...p};
+      if(!db.empresa)db.empresa={};
+      if(!db.tareas)db.tareas=[];
+      if(!db.actividades)db.actividades=[];
+      // Limpiar eventos de inicio/entrega que venían de cotizaciones (ahora se muestran desde quotes)
+      db.eventos=db.eventos.filter(e=>!e.quoteId||(!['inicio','entrega'].includes(e.tipo)));
+    }
+  }catch(e){}
+}
 function saveLocal(){localStorage.setItem(STORAGE_KEY,JSON.stringify(db));}
 
 async function syncToSheets(){
@@ -1289,10 +1302,8 @@ function fmtFecha(f){
 function renderEventosList(){
   const el=document.getElementById('eventos-list');
   const soon=(new Date(Date.now()+7*86400000)).toISOString().split('T')[0];
-  const tipoIcon={reunion:'🤝','no-disp':'🚫'};
-  const tipoLabel={reunion:'Reunión','no-disp':'No disponible'};
 
-  // ── PROYECTOS (cotizaciones con rango de fechas) ──
+  // ── PROYECTOS (una sola fila por cotización con rango) ──
   const proyectos=db.quotes.filter(q=>{
     if(q.status==='accepted') return true;
     if(q.status==='completed') return mostrarCompletadas;
@@ -1302,8 +1313,7 @@ function renderEventosList(){
     desc:q.cliente+' — '+q.desc,
     fechaIni:cleanFecha(q.fecha),
     fechaFin:cleanFecha(q.fechaEntrega),
-    status:q.status,
-    fromQuote:true
+    status:q.status
   })).filter(p=>p.fechaIni||p.fechaFin)
     .sort((a,b)=>(a.fechaIni||a.fechaFin)>(b.fechaIni||b.fechaFin)?1:-1);
 
@@ -1313,11 +1323,14 @@ function renderEventosList(){
     return{...t,fecha:cleanFecha(t.fecha),proyDesc:q?q.cliente+' — '+q.desc:'Proyecto'};
   }).sort((a,b)=>a.fecha>b.fecha?1:-1);
 
-  // ── EVENTOS MANUALES ──
-  const manuales=db.eventos.map(e=>({...e,fecha:cleanFecha(e.fecha)}))
+  // ── EVENTOS MANUALES (solo los creados manualmente, sin duplicados de cotizaciones) ──
+  const manuales=db.eventos
+    .filter(e=>!e.quoteId) // solo eventos sin cotización asociada
+    .map(e=>({...e,fecha:cleanFecha(e.fecha)}))
+    .filter((e,i,arr)=>arr.findIndex(x=>x.fecha===e.fecha&&x.desc===e.desc)===i)
     .sort((a,b)=>a.fecha>b.fecha?1:-1);
 
-  if(!proyectos.length&&!manuales.length){
+  if(!proyectos.length&&!manuales.length&&!tareasAgenda.length){
     el.innerHTML='<div class="empty">Sin eventos registrados</div>';return;
   }
 
@@ -1378,6 +1391,8 @@ function renderEventosList(){
   // Eventos manuales
   if(manuales.length){
     html+=`<div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.05em;margin:16px 0 8px">Otros compromisos</div>`;
+    const tipoIcon={reunion:'🤝','no-disp':'🚫'};
+    const tipoLabel={reunion:'Reunión','no-disp':'No disponible'};
     html+=manuales.map(e=>{
       const isPast=e.fecha<today;
       const isSoon=!isPast&&e.fecha<=soon;
@@ -1487,10 +1502,26 @@ function renderDashboard(){
   const dq=document.getElementById('dash-quotes');
   const accepted=db.quotes.filter(q=>q.status==='accepted').slice(-4).reverse();
   if(!accepted.length)dq.innerHTML='<div class="empty">Sin cotizaciones aceptadas</div>';
-  else dq.innerHTML=`<table><thead><tr><th>Cliente</th><th>Total</th><th>Cobrado</th></tr></thead><tbody>${
-    accepted.map(q=>{const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
-      return`<tr><td>${q.cliente}<br><span style="color:#888;font-size:11px">${q.desc}</span></td><td>${fmt(q.total)}</td><td class="green">${fmt(cobrado)}</td></tr>`;
-    }).join('')}</tbody></table>`;
+  else dq.innerHTML=`<div>${
+    accepted.map(q=>{
+      const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
+      const pct=q.total>0?Math.min(100,Math.round(cobrado/q.total*100)):0;
+      const pendiente=q.total-cobrado;
+      return`<div style="padding:8px 0;border-bottom:1px solid #f0f0ec">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+          <div>
+            <div style="font-size:13px;font-weight:600">${q.cliente}</div>
+            <div style="font-size:11px;color:#888">${q.desc}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:13px;font-weight:700">${fmt(q.total)}</div>
+            <div style="font-size:11px;color:${pendiente>0?'#d97706':'#16a34a'}">${pendiente>0?'Pendiente: '+fmt(pendiente):'Pagado ✓'}</div>
+          </div>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+      </div>`;
+    }).join('')
+  }</div>`;
 
   const da=document.getElementById('dash-agenda');
   const upcoming=[
@@ -1506,11 +1537,37 @@ function renderDashboard(){
 
   const dg=document.getElementById('dash-gastos');
   if(!db.asistencias.length)dg.innerHTML='<div class="empty">Sin registros de asistencia</div>';
-  else dg.innerHTML=`<table><thead><tr><th>Fecha</th><th>Presentes</th><th>Gasto</th></tr></thead><tbody>${
-    db.asistencias.slice(-5).reverse().map(att=>{
-      const gasto=att.registros.filter(r=>r.asistio).reduce((s,r)=>s+r.jornal,0);
-      return`<tr><td>${att.fecha}</td><td>${att.registros.filter(r=>r.asistio).length} persona(s)</td><td class="red" style="font-weight:700">${fmt(gasto)}</td></tr>`;
-    }).join('')}</tbody></table>`;
+  else {
+    // Agrupar asistencias por fecha y sumar gastos
+    const gastosAgrupados={};
+    db.asistencias.forEach(att=>{
+      const f=cleanFecha(att.fecha);
+      if(!gastosAgrupados[f])gastosAgrupados[f]={presentes:0,gasto:0};
+      att.registros.filter(r=>r.asistio).forEach(r=>{
+        gastosAgrupados[f].presentes++;
+        gastosAgrupados[f].gasto+=r.jornal;
+      });
+    });
+    // Guardar nombres por fecha
+    const nombresPorFecha={};
+    db.asistencias.forEach(att=>{
+      const f=cleanFecha(att.fecha);
+      if(!nombresPorFecha[f])nombresPorFecha[f]=[];
+      att.registros.filter(r=>r.asistio).forEach(r=>{
+        if(!nombresPorFecha[f].includes(r.nombre))nombresPorFecha[f].push(r.nombre);
+      });
+    });
+    const gastosOrdenados=Object.entries(gastosAgrupados)
+      .sort((a,b)=>b[0]>a[0]?1:-1).slice(0,5);
+    dg.innerHTML=`<table><thead><tr><th>Fecha</th><th>Ayudantes</th><th>Gasto</th></tr></thead><tbody>${
+      gastosOrdenados.map(([fecha,data])=>`
+        <tr>
+          <td style="font-weight:600">${fmtFechaCorta(fecha)}</td>
+          <td><span style="font-size:12px;color:#185FA5">${(nombresPorFecha[fecha]||[]).join(', ')||'—'}</span></td>
+          <td><span style="color:#dc2626;font-weight:700">${fmt(data.gasto)}</span></td>
+        </tr>`).join('')
+    }</tbody></table>`;
+  }
 }
 
 // EMPRESA
