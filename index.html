@@ -298,6 +298,7 @@ tr:hover td{background:#fafafa}
           <button class="btn btn-sm" id="f-pending" onclick="filterQuotes('pending')">Enviadas</button>
           <button class="btn btn-sm" id="f-accepted" onclick="filterQuotes('accepted')">Aceptadas</button>
           <button class="btn btn-sm" id="f-rejected" onclick="filterQuotes('rejected')">Rechazadas</button>
+          <button class="btn btn-sm" id="f-completed" onclick="filterQuotes('completed')" style="background:#f3f4f6;color:#374151">✅ Completadas</button>
         </div>
       </div>
       <div id="quotes-list"></div>
@@ -487,7 +488,10 @@ tr:hover td{background:#fafafa}
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <div class="card-title" style="margin:0">📌 Tareas por proyecto</div>
-      <button class="btn btn-primary btn-sm" onclick="openTarea()">+ Nueva tarea</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" id="btn-toggle-completadas-actividades" onclick="toggleCompletadasActividades()" style="font-size:12px">👁 Ver completadas</button>
+        <button class="btn btn-primary btn-sm" onclick="openTarea()">+ Nueva tarea</button>
+      </div>
     </div>
     <div style="margin-bottom:12px">
       <label>Proyecto</label>
@@ -1846,10 +1850,14 @@ function renderActividades(){
   const el=document.getElementById('actividades-list');
   const filterQid=document.getElementById('act-filter').value;
 
-  const quotes=db.quotes.filter(q=>q.status==='accepted'||q.status==='completed');
+  const quotes=db.quotes.filter(q=>q.status==='accepted'||(q.status==='completed'&&mostrarCompletadas));
   const filtered=filterQid?quotes.filter(q=>q.id==filterQid):quotes;
 
-  if(!filtered.length){el.innerHTML='<div class="empty">Sin proyectos activos</div>';return;}
+  if(!filtered.length){
+    const hayCompletados=db.quotes.some(q=>q.status==='completed');
+    el.innerHTML=`<div class="empty">${hayCompletados&&!mostrarCompletadas?'Solo hay proyectos completados. Usa 👁 Ver completadas para verlos.':'Sin proyectos activos'}</div>`;
+    return;
+  }
 
   el.innerHTML=filtered.map(q=>{
     const tareas=(db.tareas||[]).filter(t=>t.quoteId==q.id).sort((a,b)=>(a.orden||0)-(b.orden||0));
@@ -1906,7 +1914,7 @@ function renderActividades(){
 function toggleCompletadas(from){
   mostrarCompletadas=!mostrarCompletadas;
   const label=mostrarCompletadas?'🙈 Ocultar completadas':'👁 Ver completadas';
-  ['btn-toggle-completadas-cobros','btn-toggle-completadas-gastos','btn-toggle-completadas-agenda'].forEach(id=>{
+  ['btn-toggle-completadas-cobros','btn-toggle-completadas-gastos','btn-toggle-completadas-agenda','btn-toggle-completadas-actividades'].forEach(id=>{
     const btn=document.getElementById(id);
     if(btn)btn.textContent=label;
   });
@@ -1914,11 +1922,11 @@ function toggleCompletadas(from){
   renderGastos();
   renderCalendar();
   renderEventosList();
+  renderActividades();
 }
 
-function toggleCompletadasAgenda(){
-  toggleCompletadas('agenda');
-}
+function toggleCompletadasAgenda(){ toggleCompletadas('agenda'); }
+function toggleCompletadasActividades(){ toggleCompletadas('actividades'); }
 
 // DETALLE PROYECTO
 function verDetalleProyecto(qid){
