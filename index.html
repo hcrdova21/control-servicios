@@ -316,7 +316,12 @@ tr:hover td{background:#fafafa}
       <div><label>Fecha</label><input type="date" id="p-fecha"></div>
       <div><label>Nota (opcional)</label><input type="text" id="p-nota" placeholder="Ej: Adelanto inicial"></div>
     </div>
-    <button class="btn btn-success btn-block" onclick="savePago()">+ Registrar pago</button>
+    <div style="margin-bottom:10px">
+      <label>Foto del comprobante (opcional)</label>
+      <input type="file" id="p-imagen" accept="image/*" onchange="previewPagoImagen(this)" style="margin-bottom:6px">
+      <div id="p-imagen-preview" style="margin-top:4px"></div>
+    </div>
+    <button class="btn btn-success btn-block" id="btn-guardar-pago" onclick="savePago()">+ Registrar pago</button>
   </div>
   <div class="card">
     <div class="card-title">📊 Estado de cobros (cotizaciones aceptadas)</div>
