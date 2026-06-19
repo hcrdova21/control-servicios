@@ -229,6 +229,7 @@ tr:hover td{background:#fafafa}
   <button class="nav-btn" onclick="showTab('gastos',this)">🧾 Gastos</button>
   <button class="nav-btn" onclick="showTab('ayudantes',this)">👷 Ayudantes</button>
   <button class="nav-btn" onclick="showTab('agenda',this)">📅 Agenda</button>
+  <button class="nav-btn" onclick="showTab('actividades',this)">📌 Actividades</button>
 </div>
 
 <div class="content">
@@ -421,9 +422,69 @@ tr:hover td{background:#fafafa}
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <div class="card-title" style="margin:0">📌 Compromisos y entregas</div>
-      <button class="btn btn-primary btn-sm" onclick="openEvento()">+ Agregar</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" id="btn-toggle-completadas-agenda" onclick="toggleCompletadasAgenda()" style="font-size:12px">👁 Ver completadas</button>
+        <button class="btn btn-primary btn-sm" onclick="openEvento()">+ Agregar</button>
+      </div>
     </div>
     <div id="eventos-list"></div>
+  </div>
+</div>
+
+
+<!-- ACTIVIDADES -->
+<div id="tab-actividades" class="section">
+
+  <!-- Modal nueva actividad -->
+  <div id="actividad-overlay" class="overlay" style="display:none">
+    <div class="modal" style="max-width:500px;width:100%">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="modal-title" style="margin:0">📌 Registrar actividad</div>
+        <button class="btn btn-sm" onclick="closeActividad()">✕</button>
+      </div>
+      <div style="margin-bottom:10px">
+        <label>Proyecto</label>
+        <select id="act-quote"><option value="">Seleccionar proyecto...</option></select>
+      </div>
+      <div style="margin-bottom:10px">
+        <label>Fecha</label>
+        <input type="date" id="act-fecha">
+      </div>
+      <div style="margin-bottom:10px">
+        <label>Descripción de lo realizado</label>
+        <textarea id="act-desc" rows="3" placeholder="Ej: Se instalaron las planchas de drywall en pared norte..."></textarea>
+      </div>
+      <div style="margin-bottom:10px">
+        <label>Porcentaje de avance del trabajo (%)</label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input type="range" id="act-avance" min="0" max="100" value="0" oninput="document.getElementById('act-avance-val').textContent=this.value+'%'" style="flex:1">
+          <span id="act-avance-val" style="font-weight:700;color:#185FA5;min-width:40px">0%</span>
+        </div>
+      </div>
+      <div style="margin-bottom:10px">
+        <label>Foto de evidencia (opcional)</label>
+        <input type="file" id="act-imagen" accept="image/*" onchange="previewActImagen(this)">
+        <div id="act-imagen-preview" style="margin-top:6px"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button class="btn btn-primary" style="flex:1;justify-content:center" id="btn-guardar-actividad" onclick="saveActividad()">✓ Guardar actividad</button>
+        <button class="btn" onclick="closeActividad()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="card-title" style="margin:0">📌 Actividades por proyecto</div>
+      <button class="btn btn-primary btn-sm" onclick="openActividad()">+ Nueva actividad</button>
+    </div>
+    <div style="margin-bottom:12px">
+      <label>Filtrar por proyecto</label>
+      <select id="act-filter" onchange="renderActividades()" style="max-width:300px">
+        <option value="">Todos los proyectos</option>
+      </select>
+    </div>
+    <div id="actividades-list"></div>
   </div>
 </div>
 
@@ -448,7 +509,7 @@ const STORAGE_KEY='servicios_v2';
 let SCRIPT_URL=localStorage.getItem('script_url')||'';
 let calMonth=new Date().getMonth(), calYear=new Date().getFullYear();
 let quoteFilter='all';
-let db={quotes:[],pagos:[],ayudantes:[],asistencias:[],gastos:[],eventos:[],empresa:{
+let db={quotes:[],pagos:[],ayudantes:[],asistencias:[],gastos:[],eventos:[],actividades:[],empresa:{
   nombre:'M&M Servicios y Mantenimientos Industriales S.A.C.',
   ruc:'20492370810',
   servicios:'Servicios Generales: Pintura, Soldadura, Construcción Civil y Metalmecánica',
@@ -472,7 +533,7 @@ async function syncToSheets(){
   if(!SCRIPT_URL||syncing)return;
   syncing=true;setSyncStatus('syncing','Sincronizando...');
   try{
-    const sheets=['quotes','pagos','ayudantes','asistencias','gastos','eventos'];
+    const sheets=['quotes','pagos','ayudantes','asistencias','gastos','eventos','actividades'];
     for(const s of sheets){
       const rows=serializeSheet(s);
       await fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify({sheet:s,rows})});
@@ -488,7 +549,7 @@ async function loadFromSheets(){
   if(!SCRIPT_URL)return;
   setSyncStatus('syncing','Cargando...');
   try{
-    const sheets=['quotes','pagos','ayudantes','asistencias','gastos','eventos'];
+    const sheets=['quotes','pagos','ayudantes','asistencias','gastos','eventos','actividades'];
     for(const s of sheets){
       const r=await fetch(SCRIPT_URL+'?sheet='+s);
       const data=await r.json();
@@ -516,6 +577,7 @@ function serializeSheet(s){
   if(s==='asistencias')return db.asistencias.map(a=>[a.id,a.fecha,JSON.stringify(a.registros),a.quoteId||'']);
   if(s==='gastos')return db.gastos.map(g=>[g.id,g.quoteId||'',g.desc,g.monto,g.fecha,g.tipo,g.comprobanteUrl||'']);
   if(s==='eventos')return db.eventos.map(e=>[e.id,e.desc,e.fecha,e.tipo]);
+  if(s==='actividades')return db.actividades.map(a=>[a.id,a.quoteId,a.fecha,a.desc,a.avance,a.imagenUrl||'']);
   return[];
 }
 function safeJSON(str, fallback){
@@ -555,6 +617,10 @@ function deserializeSheet(s,rows){
   if(s==='eventos')return rows.map(r=>({
     id:safeNum(r[0]),desc:safeStr(r[1]),fecha:safeStr(r[2]),tipo:safeStr(r[3])
   }));
+  if(s==='actividades')return rows.map(r=>({
+    id:safeNum(r[0]),quoteId:safeNum(r[1]),fecha:safeStr(r[2]),
+    desc:safeStr(r[3]),avance:safeNum(r[4]),imagenUrl:safeStr(r[5])
+  }));
   return[];
 }
 
@@ -577,6 +643,7 @@ function showTab(t,btn){
   if(t==='gastos'){renderGastos();}
   if(t==='ayudantes'){renderAyudantesList();renderAsistenciaForm();renderAsistenciasHist();}
   if(t==='agenda'){renderCalendar();renderEventosList();}
+  if(t==='actividades'){renderActividadesFilter();renderActividades();}
 }
 
 function switchSubTab(id,btn){
@@ -923,8 +990,9 @@ function resetGastoForm(){
 }
 function renderGastos(){
   const el=document.getElementById('gastos-rentabilidad');
-  const accepted=db.quotes.filter(q=>q.status==='accepted'||q.status==='completed');
-  if(!accepted.length){el.innerHTML='<div class="empty">Sin cotizaciones aceptadas aún</div>';}
+  const allAcceptedG=db.quotes.filter(q=>q.status==='accepted'||q.status==='completed');
+  const accepted=mostrarCompletadas?allAcceptedG:allAcceptedG.filter(q=>q.status!=='completed');
+  if(!accepted.length){el.innerHTML=`<div class="empty">${allAcceptedG.length>0&&!mostrarCompletadas?'Todas las cotizaciones están completadas. Usa 👁 Ver completadas para verlas.':'Sin cotizaciones aceptadas aún'}</div>`;}
   else{
     el.innerHTML=accepted.map(q=>{
       const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
@@ -1152,8 +1220,16 @@ function renderCalendar(){
     if(!eventDates[f])eventDates[f]=[];
     eventDates[f].push('inicio');
   });
+  // Completadas solo si mostrarCompletadas está activo
+  if(mostrarCompletadas){
+    db.quotes.filter(q=>q.status==='completed'&&q.fechaEntrega).forEach(q=>{
+      const f=cleanFecha(q.fechaEntrega);if(!f)return;
+      if(!eventDates[f])eventDates[f]=[];
+      eventDates[f].push('completed');
+    });
+  }
   // Colores por tipo
-  const tipoColor={entrega:'#dc2626',inicio:'#16a34a',reunion:'#185FA5','no-disp':'#888'};
+  const tipoColor={entrega:'#dc2626',inicio:'#16a34a',reunion:'#185FA5','no-disp':'#888',completed:'#9ca3af'};
   let html='';
   for(let i=0;i<first;i++)html+=`<div class="cal-day empty-day"></div>`;
   for(let d=1;d<=days;d++){
@@ -1181,8 +1257,9 @@ function fmtFecha(f){
 function renderEventosList(){
   const el=document.getElementById('eventos-list');
   const all=[...db.eventos];
-  db.quotes.filter(q=>q.status==='accepted'&&q.fechaEntrega).forEach(q=>{
-    all.push({id:'q-'+q.id,desc:q.cliente+' — '+q.desc,fecha:cleanFecha(q.fechaEntrega),tipo:'entrega',fromQuote:true});
+  db.quotes.filter(q=>(q.status==='accepted'||q.status==='completed')&&q.fechaEntrega).forEach(q=>{
+    if(q.status==='completed'&&!mostrarCompletadas)return;
+    all.push({id:'q-'+q.id,desc:q.cliente+' — '+q.desc,fecha:cleanFecha(q.fechaEntrega),tipo:q.status==='completed'?'completed':'entrega',fromQuote:true});
   });
   // Limpiar fechas de eventos manuales también
   all.forEach(e=>e.fecha=cleanFecha(e.fecha));
@@ -1492,16 +1569,157 @@ function cancelarEdicion(){
   renderItems();
 }
 
+// ACTIVIDADES
+let actImagenBase64=null, actImagenMime=null, actImagenNombre=null;
+
+function openActividad(){
+  const sel=document.getElementById('act-quote');
+  sel.innerHTML='<option value="">Seleccionar proyecto...</option>'+
+    db.quotes.filter(q=>q.status==='accepted').map(q=>`<option value="${q.id}">${q.cliente} — ${q.desc}</option>`).join('');
+  document.getElementById('act-fecha').value=today;
+  document.getElementById('act-avance').value=0;
+  document.getElementById('act-avance-val').textContent='0%';
+  document.getElementById('act-desc').value='';
+  document.getElementById('act-imagen-preview').innerHTML='';
+  actImagenBase64=null;actImagenMime=null;actImagenNombre=null;
+  document.getElementById('actividad-overlay').style.display='flex';
+}
+
+function closeActividad(){
+  document.getElementById('actividad-overlay').style.display='none';
+}
+
+function previewActImagen(input){
+  const file=input.files[0]; if(!file)return;
+  actImagenMime=file.type; actImagenNombre=file.name;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    actImagenBase64=e.target.result.split(',')[1];
+    document.getElementById('act-imagen-preview').innerHTML=
+      `<img src="${e.target.result}" style="max-height:100px;max-width:100%;border-radius:8px;border:1px solid #eee">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function saveActividad(){
+  const qid=parseInt(document.getElementById('act-quote').value);
+  const fecha=document.getElementById('act-fecha').value;
+  const desc=document.getElementById('act-desc').value.trim();
+  const avance=parseInt(document.getElementById('act-avance').value)||0;
+  if(!qid||!fecha||!desc){customAlert('Completa proyecto, fecha y descripción.');return;}
+  const btn=document.getElementById('btn-guardar-actividad');
+  const actividad={id:Date.now(),quoteId:qid,fecha,desc,avance,imagenUrl:''};
+
+  function finalizarActividad(){
+    db.actividades.push(actividad);
+    saveAndSync();
+    closeActividad();
+    renderActividades();
+    if(btn){btn.innerHTML='✓ Guardar actividad';btn.disabled=false;}
+    customAlert('✓ Actividad registrada.');
+  }
+
+  if(actImagenBase64&&SCRIPT_URL){
+    if(btn){btn.innerHTML='⏳ Subiendo...';btn.disabled=true;}
+    const q=db.quotes.find(q=>q.id==qid);
+    const projectName=q?q.cliente+' — '+q.desc:'General';
+    fetch(SCRIPT_URL,{
+      method:'POST',headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'uploadImage',imageBase64:actImagenBase64,
+        mimeType:actImagenMime,fileName:actImagenNombre,projectName:projectName})
+    })
+    .then(r=>r.json())
+    .then(data=>{if(data.ok)actividad.imagenUrl=data.url;finalizarActividad();})
+    .catch(()=>finalizarActividad());
+  } else {
+    finalizarActividad();
+  }
+}
+
+function renderActividadesFilter(){
+  const sel=document.getElementById('act-filter');
+  const current=sel.value;
+  sel.innerHTML='<option value="">Todos los proyectos</option>'+
+    db.quotes.filter(q=>q.status==='accepted'||q.status==='completed').map(q=>
+      `<option value="${q.id}" ${q.id==current?'selected':''}>${q.cliente} — ${q.desc}</option>`
+    ).join('');
+}
+
+function deleteActividad(id){
+  customConfirm('¿Eliminar esta actividad?',r=>{
+    if(!r)return;
+    db.actividades=db.actividades.filter(a=>a.id!=id);
+    saveAndSync();renderActividades();
+  });
+}
+
+function renderActividades(){
+  const el=document.getElementById('actividades-list');
+  const filterQid=document.getElementById('act-filter').value;
+  let acts=db.actividades.slice().sort((a,b)=>b.fecha>a.fecha?1:-1);
+  if(filterQid)acts=acts.filter(a=>a.quoteId==filterQid);
+
+  if(!acts.length){
+    el.innerHTML='<div class="empty">Sin actividades registradas</div>';
+    return;
+  }
+
+  // Agrupar por proyecto
+  const byProject={};
+  acts.forEach(a=>{
+    const q=db.quotes.find(q=>q.id==a.quoteId);
+    const key=a.quoteId;
+    if(!byProject[key])byProject[key]={q,acts:[]};
+    byProject[key].acts.push(a);
+  });
+
+  el.innerHTML=Object.values(byProject).map(({q,acts})=>{
+    const lastAvance=acts[0]?.avance||0;
+    const proyLabel=q?q.cliente+' — '+q.desc:'Proyecto desconocido';
+    return`<div style="margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong style="font-size:14px">${proyLabel}</strong>
+        <span style="font-size:13px;font-weight:700;color:#185FA5">${lastAvance}% avance</span>
+      </div>
+      <div class="progress-bar" style="height:8px;margin-bottom:12px">
+        <div class="progress-fill" style="width:${lastAvance}%;background:${lastAvance>=100?'#16a34a':lastAvance>=50?'#185FA5':'#d97706'}"></div>
+      </div>
+      ${acts.map(a=>`
+        <div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #f0f0ec;align-items:flex-start">
+          ${a.imagenUrl?`<a href="${a.imagenUrl}" target="_blank">
+            <img src="${a.imagenUrl}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid #eee;flex-shrink:0" onerror="this.style.display='none'">
+          </a>`:'<div style="width:64px;height:64px;background:#f5f5f0;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:20px;flex-shrink:0">📷</div>'}
+          <div style="flex:1">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <span style="font-size:12px;color:#888">${fmtFechaCorta(a.fecha)}</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:12px;font-weight:600;color:#185FA5">${a.avance}%</span>
+                <button class="btn btn-danger" onclick="deleteActividad(${a.id})">✕</button>
+              </div>
+            </div>
+            <p style="font-size:13px;color:#333;line-height:1.5;margin:0">${a.desc}</p>
+          </div>
+        </div>`).join('')}
+    </div>`;
+  }).join('');
+}
+
 // TOGGLE COMPLETADAS
 function toggleCompletadas(from){
   mostrarCompletadas=!mostrarCompletadas;
   const label=mostrarCompletadas?'🙈 Ocultar completadas':'👁 Ver completadas';
-  const btnCobros=document.getElementById('btn-toggle-completadas-cobros');
-  const btnGastos=document.getElementById('btn-toggle-completadas-gastos');
-  if(btnCobros)btnCobros.textContent=label;
-  if(btnGastos)btnGastos.textContent=label;
+  ['btn-toggle-completadas-cobros','btn-toggle-completadas-gastos','btn-toggle-completadas-agenda'].forEach(id=>{
+    const btn=document.getElementById(id);
+    if(btn)btn.textContent=label;
+  });
   renderCobrosResumen();
   renderGastos();
+  renderCalendar();
+  renderEventosList();
+}
+
+function toggleCompletadasAgenda(){
+  toggleCompletadas('agenda');
 }
 
 // DETALLE PROYECTO
