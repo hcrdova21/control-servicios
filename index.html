@@ -272,7 +272,7 @@ tr:hover td{background:#fafafa}
         <div><label>Fecha</label><input type="date" id="q-fecha"></div>
       </div>
       <div class="row">
-        <div><label>N° Referencia (opcional)</label><input type="text" id="q-ref" placeholder="Ej: 904DIM0409-25"></div>
+        <div><label>N° Referencia (se genera automático)</label><input type="text" id="q-ref" placeholder="Ej: 904DIM0409-25"></div>
         <div><label>Fecha estimada de entrega</label><input type="date" id="q-fechaEntrega"></div>
       </div>
       <div class="divider"></div>
@@ -728,6 +728,24 @@ function renderQuoteSummary(){
     <div class="sum-line total"><span>Total cotización</span><span class="green">${fmt(total)}</span></div>`;
 }
 
+function generarRefAuto(fecha){
+  // Obtener el mayor correlativo existente
+  let maxCorr=900;
+  db.quotes.forEach(q=>{
+    if(q.ref){
+      const m=q.ref.match(/^(\d+)DIM/);
+      if(m)maxCorr=Math.max(maxCorr,parseInt(m[1]));
+    }
+  });
+  const corr=maxCorr+1;
+  // Formatear fecha
+  const f=fecha?new Date(fecha+'T12:00:00'):new Date();
+  const dia=String(f.getDate()).padStart(2,'0');
+  const mes=String(f.getMonth()+1).padStart(2,'0');
+  const anio=String(f.getFullYear()).slice(-2);
+  return corr+'DIM'+dia+mes+'-'+anio;
+}
+
 function saveQuote(){
   const cliente=document.getElementById('q-cliente').value.trim();
   const desc=document.getElementById('q-desc').value.trim();
@@ -749,10 +767,12 @@ function saveQuote(){
   }
 
   // MODO CREACIÓN — nueva cotización
+  const fechaVal=document.getElementById('q-fecha').value;
+  const refVal=document.getElementById('q-ref').value.trim()||generarRefAuto(fechaVal);
   const q={id:Date.now(),cliente,clienteRuc:document.getElementById('q-ruc').value.trim(),
-    desc,fecha:document.getElementById('q-fecha').value,
+    desc,fecha:fechaVal,
     fechaEntrega:document.getElementById('q-fechaEntrega').value,
-    ref:document.getElementById('q-ref').value.trim(),
+    ref:refVal,
     items:[...items],total,status:'pending'};
   db.quotes.push(q);
   // Auto-crear evento si hay fecha entrega
