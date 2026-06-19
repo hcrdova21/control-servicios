@@ -586,6 +586,8 @@ async function loadFromSheets(){
     const re=await fetch(SCRIPT_URL+'?sheet=empresa');
     const de=await re.json();
     if(de.rows&&de.rows.length)db.empresa=deserializeEmpresa(de.rows);
+    // Limpiar eventos de inicio/entrega de cotizaciones (ya se muestran desde quotes)
+    db.eventos=db.eventos.filter(e=>!e.quoteId||!['inicio','entrega'].includes(e.tipo));
     saveLocal();setSyncStatus('ok','Sincronizado ✓');
   }catch(e){setSyncStatus('error','Error al cargar');}
 }
@@ -604,7 +606,7 @@ function serializeSheet(s){
   if(s==='ayudantes')return db.ayudantes.map(a=>[a.id,a.nombre,a.jornal,a.activo?'1':'0']);
   if(s==='asistencias')return db.asistencias.map(a=>[a.id,a.fecha,JSON.stringify(a.registros),a.quoteId||'',a.pagado?'1':'0']);
   if(s==='gastos')return db.gastos.map(g=>[g.id,g.quoteId||'',g.desc,g.monto,g.fecha,g.tipo,g.comprobanteUrl||'']);
-  if(s==='eventos')return db.eventos.map(e=>[e.id,e.desc,e.fecha,e.tipo]);
+  if(s==='eventos')return db.eventos.filter(e=>!e.quoteId||!['inicio','entrega'].includes(e.tipo)).map(e=>[e.id,e.desc,e.fecha,e.tipo]);
   if(s==='actividades')return db.actividades.map(a=>[a.id,a.quoteId,a.fecha,a.desc,a.avance,a.imagenUrl||'']);
   if(s==='tareas')return db.tareas.map(t=>[t.id,t.quoteId,t.desc,t.fecha||'',t.orden||1,t.completada?'1':'0',t.fechaCompletada||'',t.notaCompletada||'',t.imagenUrl||'']);
   return[];
