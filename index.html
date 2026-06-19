@@ -1271,8 +1271,28 @@ function renderAsistenciasHist(){
   el.innerHTML=html;
 }
 function deleteAsistencia(id){
-  customConfirm('¿Eliminar este registro de asistencia?',r=>{if(!r)return;
-  db.asistencias=db.asistencias.filter(a=>a.id!=id);saveAndSync();renderAsistenciasHist();renderDashboard();});
+  const att=db.asistencias.find(a=>a.id==id);
+  const msg=att&&att.pagado
+    ?'¿Eliminar este registro? También se eliminará el gasto asociado en la hoja de Gastos.'
+    :'¿Eliminar este registro de asistencia?';
+  customConfirm(msg,r=>{
+    if(!r)return;
+    // Si estaba pagado, eliminar el gasto generado automáticamente
+    if(att&&att.pagado){
+      const pres=att.registros.filter(r=>r.asistio);
+      const nombres=pres.map(r=>r.nombre).join(', ');
+      const descBuscada='Pago ayudantes: '+nombres;
+      const fechaBuscada=cleanFecha(att.fecha);
+      // Eliminar el gasto que coincida con fecha, descripción y quoteId
+      db.gastos=db.gastos.filter(g=>!(
+        g.desc===descBuscada&&
+        cleanFecha(g.fecha)===fechaBuscada&&
+        g.quoteId==att.quoteId
+      ));
+    }
+    db.asistencias=db.asistencias.filter(a=>a.id!=id);
+    saveAndSync();renderAsistenciasHist();renderDashboard();
+  });
 }
 
 // AGENDA
