@@ -49,6 +49,7 @@ input:focus,select:focus,textarea:focus{border-color:#185FA5}
 .badge-partial{background:#dbeafe;color:#1e40af}
 .badge-paid{background:#dcfce7;color:#166534}
 .badge-active{background:#dcfce7;color:#166534}
+.badge-completed{background:#f3f4f6;color:#374151}
 .badge-inactive{background:#f3f4f6;color:#6b7280}
 table{width:100%;border-collapse:collapse;font-size:12px}
 th{text-align:left;padding:6px 8px;font-weight:600;font-size:11px;color:#888;border-bottom:1px solid #eee;text-transform:uppercase}
@@ -498,7 +499,7 @@ function deserializeEmpresa(rows){
 }
 function serializeSheet(s){
   if(s==='quotes')return db.quotes.map(q=>[q.id,q.cliente,q.clienteRuc||'',q.desc,q.fecha,q.fechaEntrega||'',q.ref||'',q.total,q.status||'pending',JSON.stringify(q.items)]);
-  if(s==='pagos')return db.pagos.map(p=>[p.id,p.quoteId,p.monto,p.fecha,p.nota||'']);
+  if(s==='pagos')return db.pagos.map(p=>[p.id,p.quoteId,p.monto,p.fecha,p.nota||'',p.comprobanteUrl||'']);
   if(s==='ayudantes')return db.ayudantes.map(a=>[a.id,a.nombre,a.jornal,a.activo?'1':'0']);
   if(s==='asistencias')return db.asistencias.map(a=>[a.id,a.fecha,JSON.stringify(a.registros),a.quoteId||'']);
   if(s==='gastos')return db.gastos.map(g=>[g.id,g.quoteId||'',g.desc,g.monto,g.fecha,g.tipo,g.comprobanteUrl||'']);
@@ -523,7 +524,7 @@ function deserializeSheet(s,rows){
   }));
   if(s==='pagos')return rows.map(r=>({
     id:safeNum(r[0]),quoteId:safeNum(r[1]),monto:safeNum(r[2]),
-    fecha:safeStr(r[3]),nota:safeStr(r[4])
+    fecha:safeStr(r[3]),nota:safeStr(r[4]),comprobanteUrl:safeStr(r[5])
   }));
   if(s==='ayudantes')return rows.map(r=>({
     id:safeNum(r[0]),nombre:safeStr(r[1]),jornal:safeNum(r[2]),
@@ -641,8 +642,8 @@ function saveQuote(){
   customAlert('✓ Cotización guardada.');
 }
 
-const statusLabel={pending:'Enviada',accepted:'Aceptada',rejected:'Rechazada'};
-const statusBadge={pending:'sent',accepted:'accepted',rejected:'rejected'};
+const statusLabel={pending:'Enviada',accepted:'Aceptada',rejected:'Rechazada',completed:'Completada'};
+const statusBadge={pending:'sent',accepted:'accepted',rejected:'rejected',completed:'completed'};
 
 function filterQuotes(f){
   quoteFilter=f;
@@ -674,6 +675,7 @@ function renderQuotesList(){
             <option value="pending" ${q.status==='pending'?'selected':''}>Enviada</option>
             <option value="accepted" ${q.status==='accepted'?'selected':''}>Aceptada</option>
             <option value="rejected" ${q.status==='rejected'?'selected':''}>Rechazada</option>
+            <option value="completed" ${q.status==='completed'?'selected':''}>Completada</option>
           </select>
         </td>
         <td>
@@ -728,27 +730,67 @@ function deleteQuote(id){
 // PAGOS
 function renderPagoSelect(){
   const sel=document.getElementById('p-quote');
-  const accepted=db.quotes.filter(q=>q.status==='accepted');
+  const accepted=db.quotes.filter(q=>q.status==='accepted'||q.status==='completed');
   sel.innerHTML='<option value="">Seleccionar cotización aceptada...</option>'+accepted.map(q=>{
     const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
     return`<option value="${q.id}">${q.cliente} — ${q.desc} (pendiente: ${fmt(q.total-cobrado)})</option>`;
   }).join('');
 }
+let pagoImagenBase64=null, pagoImagenMime=null, pagoImagenNombre=null;
+
+function previewPagoImagen(input){
+  const file=input.files[0]; if(!file)return;
+  pagoImagenMime=file.type; pagoImagenNombre=file.name;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    pagoImagenBase64=e.target.result.split(',')[1];
+    document.getElementById('p-imagen-preview').innerHTML=
+      `<img src="${e.target.result}" style="max-height:80px;max-width:100%;border-radius:8px;border:1px solid #eee">`;
+  };
+  reader.readAsDataURL(file);
+}
+
 function savePago(){
   const qid=parseInt(document.getElementById('p-quote').value);
   const monto=parseFloat(document.getElementById('p-monto').value)||0;
   const fecha=document.getElementById('p-fecha').value;
   const nota=document.getElementById('p-nota').value.trim();
   if(!qid||monto<=0){customAlert('Selecciona una cotización e ingresa un monto válido.');return;}
-  db.pagos.push({id:Date.now(),quoteId:qid,monto,fecha,nota});
-  saveAndSync();
-  document.getElementById('p-monto').value='';document.getElementById('p-nota').value='';
-  renderPagosList();renderPagoSelect();renderCobrosResumen();
-  customAlert('✓ Pago registrado.');
+  const btn=document.getElementById('btn-guardar-pago');
+  const pago={id:Date.now(),quoteId:qid,monto,fecha,nota,comprobanteUrl:''};
+
+  function finalizarPago(){
+    db.pagos.push(pago);
+    saveAndSync();
+    document.getElementById('p-monto').value='';
+    document.getElementById('p-nota').value='';
+    document.getElementById('p-imagen').value='';
+    document.getElementById('p-imagen-preview').innerHTML='';
+    if(btn){btn.innerHTML='+ Registrar pago';btn.disabled=false;}
+    pagoImagenBase64=null;pagoImagenMime=null;pagoImagenNombre=null;
+    renderPagosList();renderPagoSelect();renderCobrosResumen();
+    customAlert('✓ Pago registrado.');
+  }
+
+  if(pagoImagenBase64&&SCRIPT_URL){
+    if(btn){btn.innerHTML='⏳ Subiendo...';btn.disabled=true;}
+    const q=db.quotes.find(q=>q.id==qid);
+    const projectName=q?q.cliente+' — '+q.desc:'General';
+    fetch(SCRIPT_URL,{
+      method:'POST',headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'uploadImage',imageBase64:pagoImagenBase64,
+        mimeType:pagoImagenMime,fileName:pagoImagenNombre,projectName:projectName})
+    })
+    .then(r=>r.json())
+    .then(data=>{if(data.ok)pago.comprobanteUrl=data.url;finalizarPago();})
+    .catch(()=>finalizarPago());
+  } else {
+    finalizarPago();
+  }
 }
 function renderCobrosResumen(){
   const el=document.getElementById('cobros-resumen');
-  const accepted=db.quotes.filter(q=>q.status==='accepted');
+  const accepted=db.quotes.filter(q=>q.status==='accepted'||q.status==='completed');
   if(!accepted.length){el.innerHTML='<div class="empty">Sin cotizaciones aceptadas</div>';return;}
   el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Cliente</th><th>Total</th><th>Cobrado</th><th>Pendiente</th><th>Estado</th></tr></thead><tbody>${
     accepted.map(q=>{
@@ -771,6 +813,7 @@ function renderPagosList(){
       const q=db.quotes.find(q=>q.id===p.quoteId)||{cliente:'—'};
       return`<tr><td>${q.cliente}</td><td>${p.fecha||'—'}</td><td class="green" style="font-weight:700">${fmt(p.monto)}</td>
         <td style="color:#888">${p.nota||'—'}</td>
+        <td style="text-align:center">${p.comprobanteUrl?`<a href="${p.comprobanteUrl}" target="_blank" style="font-size:18px;text-decoration:none" title="Ver comprobante">📎</a>`:'—'}</td>
         <td><button class="btn btn-danger" onclick="deletePago(${p.id})">✕</button></td></tr>`;
     }).join('')
   }</tbody></table></div>`;
@@ -867,7 +910,7 @@ function resetGastoForm(){
 }
 function renderGastos(){
   const el=document.getElementById('gastos-rentabilidad');
-  const accepted=db.quotes.filter(q=>q.status==='accepted');
+  const accepted=db.quotes.filter(q=>q.status==='accepted'||q.status==='completed');
   if(!accepted.length){el.innerHTML='<div class="empty">Sin cotizaciones aceptadas aún</div>';}
   else{
     el.innerHTML=accepted.map(q=>{
@@ -1238,7 +1281,7 @@ function renderDashboard(){
   }
 
   const dq=document.getElementById('dash-quotes');
-  const accepted=db.quotes.filter(q=>q.status==='accepted').slice(-4).reverse();
+  const accepted=db.quotes.filter(q=>q.status==='accepted'||q.status==='completed').slice(-4).reverse();
   if(!accepted.length)dq.innerHTML='<div class="empty">Sin cotizaciones aceptadas</div>';
   else dq.innerHTML=`<table><thead><tr><th>Cliente</th><th>Total</th><th>Cobrado</th></tr></thead><tbody>${
     accepted.map(q=>{const cobrado=db.pagos.filter(p=>p.quoteId==q.id).reduce((s,p)=>s+p.monto,0);
