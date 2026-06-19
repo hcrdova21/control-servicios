@@ -562,12 +562,19 @@ async function syncToSheets(){
   syncing=true;setSyncStatus('syncing','Sincronizando...');
   try{
     const sheets=['quotes','pagos','ayudantes','asistencias','gastos','eventos','actividades','tareas'];
-    for(const s of sheets){
-      const rows=serializeSheet(s);
-      await fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify({sheet:s,rows})});
-    }
-    const er=serializeEmpresa();
-    await fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify({sheet:'empresa',rows:er})});
+    // Enviar todas las hojas en paralelo
+    await Promise.all([
+      ...sheets.map(s=>fetch(SCRIPT_URL,{
+        method:'POST',
+        headers:{'Content-Type':'text/plain'},
+        body:JSON.stringify({sheet:s,rows:serializeSheet(s)})
+      }).catch(()=>{})),
+      fetch(SCRIPT_URL,{
+        method:'POST',
+        headers:{'Content-Type':'text/plain'},
+        body:JSON.stringify({sheet:'empresa',rows:serializeEmpresa()})
+      }).catch(()=>{})
+    ]);
     setSyncStatus('ok','Sincronizado ✓');
   }catch(e){setSyncStatus('error','Sin conexión');}
   syncing=false;
@@ -577,16 +584,18 @@ async function loadFromSheets(){
   if(!SCRIPT_URL)return;
   setSyncStatus('syncing','Cargando...');
   try{
-    const sheets=['quotes','pagos','ayudantes','asistencias','gastos','eventos','actividades','tareas'];
-    for(const s of sheets){
-      const r=await fetch(SCRIPT_URL+'?sheet='+s);
-      const data=await r.json();
-      if(data.rows&&data.rows.length)db[s]=deserializeSheet(s,data.rows);
-    }
-    const re=await fetch(SCRIPT_URL+'?sheet=empresa');
-    const de=await re.json();
-    if(de.rows&&de.rows.length)db.empresa=deserializeEmpresa(de.rows);
-    // Limpiar eventos de inicio/entrega de cotizaciones (ya se muestran desde quotes)
+    // Cargar todas las hojas en paralelo (mucho más rápido)
+    const sheets=['quotes','pagos','ayudantes','asistencias','gastos','eventos','actividades','tareas','empresa'];
+    const responses=await Promise.all(sheets.map(s=>
+      fetch(SCRIPT_URL+'?sheet='+s).then(r=>r.json()).catch(()=>({rows:[]}))
+    ));
+    sheets.forEach((s,i)=>{
+      const data=responses[i];
+      if(!data.rows||!data.rows.length)return;
+      if(s==='empresa')db.empresa=deserializeEmpresa(data.rows);
+      else db[s]=deserializeSheet(s,data.rows);
+    });
+    // Limpiar eventos de inicio/entrega de cotizaciones
     db.eventos=db.eventos.filter(e=>!e.quoteId||!['inicio','entrega'].includes(e.tipo));
     saveLocal();setSyncStatus('ok','Sincronizado ✓');
   }catch(e){setSyncStatus('error','Error al cargar');}
