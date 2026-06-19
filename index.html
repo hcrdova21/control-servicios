@@ -602,7 +602,7 @@ function serializeSheet(s){
   if(s==='quotes')return db.quotes.map(q=>[q.id,q.cliente,q.clienteRuc||'',q.desc,q.fecha,q.fechaEntrega||'',q.ref||'',q.total,q.status||'pending',JSON.stringify(q.items)]);
   if(s==='pagos')return db.pagos.map(p=>[p.id,p.quoteId,p.monto,p.fecha,p.nota||'',p.comprobanteUrl||'']);
   if(s==='ayudantes')return db.ayudantes.map(a=>[a.id,a.nombre,a.jornal,a.activo?'1':'0']);
-  if(s==='asistencias')return db.asistencias.map(a=>[a.id,a.fecha,JSON.stringify(a.registros),a.quoteId||'']);
+  if(s==='asistencias')return db.asistencias.map(a=>[a.id,a.fecha,JSON.stringify(a.registros),a.quoteId||'',a.pagado?'1':'0']);
   if(s==='gastos')return db.gastos.map(g=>[g.id,g.quoteId||'',g.desc,g.monto,g.fecha,g.tipo,g.comprobanteUrl||'']);
   if(s==='eventos')return db.eventos.map(e=>[e.id,e.desc,e.fecha,e.tipo]);
   if(s==='actividades')return db.actividades.map(a=>[a.id,a.quoteId,a.fecha,a.desc,a.avance,a.imagenUrl||'']);
@@ -636,7 +636,8 @@ function deserializeSheet(s,rows){
   if(s==='asistencias')return rows.map(r=>({
     id:safeNum(r[0]),fecha:safeStr(r[1]),
     registros:safeJSON(r[2],[]),
-    quoteId:safeId(r[3])
+    quoteId:safeId(r[3]),
+    pagado:safeBool(r[4])
   }));
   if(s==='gastos')return rows.map(r=>({
     id:safeNum(r[0]),quoteId:safeId(r[1]),desc:safeStr(r[2]),
@@ -1193,24 +1194,81 @@ function saveAsistencia(){
     alert('✓ Asistencia registrada para '+dates.length+' días ('+ini+' al '+fin+').');
   }
 }
+function marcarPagado(id){
+  const att=db.asistencias.find(a=>a.id==id);
+  if(!att)return;
+  customConfirm('¿Confirmar pago a los ayudantes de este día? Se registrará automáticamente como gasto.',r=>{
+    if(!r)return;
+    att.pagado=true;
+    const pres=att.registros.filter(r=>r.asistio);
+    const gasto=pres.reduce((s,r)=>s+r.jornal,0);
+    const nombres=pres.map(r=>r.nombre).join(', ');
+    db.gastos.push({
+      id:Date.now(),
+      quoteId:att.quoteId||'',
+      desc:'Pago ayudantes: '+nombres,
+      monto:gasto,
+      fecha:cleanFecha(att.fecha),
+      tipo:'mano de obra',
+      comprobanteUrl:''
+    });
+    saveAndSync();
+    renderAsistenciasHist();
+    renderDashboard();
+    customAlert('✓ Pago registrado y añadido a gastos automáticamente.');
+  });
+}
+
 function renderAsistenciasHist(){
   const el=document.getElementById('asistencias-hist');
   if(!db.asistencias.length){el.innerHTML='<div class="empty">Sin registros</div>';return;}
-  el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Proyecto</th><th>Presentes</th><th>Ausentes</th><th>Gasto</th><th></th></tr></thead><tbody>${
-    db.asistencias.slice().reverse().map(att=>{
-      const pres=att.registros.filter(r=>r.asistio);
-      const aus=att.registros.filter(r=>!r.asistio);
-      const gasto=pres.reduce((s,r)=>s+r.jornal,0);
-      const q=att.quoteId?db.quotes.find(q=>q.id===att.quoteId):null;
-      const proyLabel=q?`<span style="font-size:11px;font-weight:600;color:#185FA5">${q.cliente}<br><span style="color:#888;font-weight:400">${q.desc}</span></span>`:'<span style="color:#bbb;font-size:11px">Sin asignar</span>';
-      return`<tr><td style="white-space:nowrap">${att.fecha}</td>
-        <td>${proyLabel}</td>
-        <td class="green" style="font-size:12px">${pres.map(r=>r.nombre).join(', ')||'—'}</td>
-        <td class="red" style="font-size:12px">${aus.map(r=>r.nombre).join(', ')||'—'}</td>
-        <td class="red" style="font-weight:700">${fmt(gasto)}</td>
-        <td><button class="btn btn-danger" onclick="deleteAsistencia(${att.id})">✕</button></td></tr>`;
-    }).join('')
-  }</tbody></table></div>`;
+
+  const pendientes=db.asistencias.filter(a=>!a.pagado).slice().reverse();
+  const pagados=db.asistencias.filter(a=>a.pagado).slice().reverse();
+
+  function renderRow(att){
+    const pres=att.registros.filter(r=>r.asistio);
+    const aus=att.registros.filter(r=>!r.asistio);
+    const gasto=pres.reduce((s,r)=>s+r.jornal,0);
+    const q=att.quoteId?db.quotes.find(q=>q.id==att.quoteId):null;
+    const proyLabel=q?`<span style="font-size:11px;font-weight:600;color:#185FA5">${q.cliente} — ${q.desc}</span>`:'<span style="color:#bbb;font-size:11px">Sin asignar</span>';
+    return`<div style="display:flex;gap:10px;align-items:flex-start;padding:10px;margin-bottom:8px;
+      background:${att.pagado?'#f0fdf4':'#fffbeb'};border-radius:10px;
+      border:1px solid ${att.pagado?'#bbf7d0':'#fde68a'}">
+      <div style="font-size:22px;flex-shrink:0">${att.pagado?'✅':'⏳'}</div>
+      <div style="flex:1">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:4px">
+          <div>
+            <div style="font-size:13px;font-weight:700">${fmtFechaCorta(cleanFecha(att.fecha))}</div>
+            <div style="margin-top:2px">${proyLabel}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:15px;font-weight:700;color:${att.pagado?'#16a34a':'#d97706'}">${fmt(gasto)}</div>
+            <div style="font-size:11px;color:${att.pagado?'#16a34a':'#d97706'}">${att.pagado?'Pagado':'Pendiente'}</div>
+          </div>
+        </div>
+        <div style="font-size:12px;margin-top:6px;display:flex;gap:12px;flex-wrap:wrap">
+          ${pres.length?`<span style="color:#16a34a">✓ ${pres.map(r=>r.nombre+' ('+fmt(r.jornal)+')').join(', ')}</span>`:''}
+          ${aus.length?`<span style="color:#dc2626">✗ ${aus.map(r=>r.nombre).join(', ')}</span>`:''}
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          ${!att.pagado?`<button class="btn btn-success btn-sm" onclick="marcarPagado(${att.id})" style="font-size:12px">💵 Marcar como pagado</button>`:''}
+          <button class="btn btn-danger" onclick="deleteAsistencia(${att.id})">✕</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  let html='';
+  if(pendientes.length){
+    html+=`<div style="font-size:11px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">⏳ Pagos pendientes (${pendientes.length})</div>`;
+    html+=pendientes.map(a=>renderRow(a)).join('');
+  }
+  if(pagados.length){
+    html+=`<div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.05em;margin:16px 0 8px">✅ Pagados (${pagados.length})</div>`;
+    html+=pagados.map(a=>renderRow(a)).join('');
+  }
+  el.innerHTML=html;
 }
 function deleteAsistencia(id){
   customConfirm('¿Eliminar este registro de asistencia?',r=>{if(!r)return;
